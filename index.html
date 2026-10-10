@@ -535,110 +535,38 @@ im.src=url;
 }
 
 var Provider={
-model:'claude-sonnet-4-6',
 /* ---------------------------------------------------------------
-   CONNECTION SETUP  (no API key is ever stored in this file)
-
-   A) PRODUCTION / SECURE: set proxyUrl to YOUR backend endpoint, e.g.
-        proxyUrl:'https://scamsense-proxy.YOURNAME.workers.dev'
-      The backend holds the key and forwards the request to Anthropic.
-      The browser sends no key.
-
-   B) PROTOTYPE TEST ONLY: leave proxyUrl empty. The app then calls
-      api.anthropic.com directly using a TEST key you paste at runtime
-      (a prompt appears on the first message; it is kept only in
-      sessionStorage for this tab, never in the file). Use a throw-away
-      key with a low spend limit and delete it afterwards.
+   AI CONNECTION: the ScamSense Cloudflare Worker.
+   The browser sends { message, history, system } and gets { reply }.
+   The AI key lives only on the server (Cloudflare secret). No key,
+   token or secret is ever stored in this file or asked from the user.
    --------------------------------------------------------------- */
-proxyUrl:'',
-directUrl:'https://api.anthropic.com/v1/messages',
-version:'2023-06-01',
-debug:true,            /* true = show the real connection error in the chat while testing */
+workerUrl:'https://scamsense-ai.kingalikid00.workers.dev/',
 lastError:null,
-_asked:false,
 err:function(code,msg){var e=new Error(msg);e.code=code;return e},
-endpoint:function(){return Provider.proxyUrl||Provider.directUrl},
-getKey:function(){try{return sessionStorage.getItem('scamsense-test-key')||''}catch(e){return ''}},
-setTestKey:function(k){try{sessionStorage.setItem('scamsense-test-key',String(k||'').trim())}catch(e){}},
-askKey:function(){
-/* This app defines its own global prompt() chat helper that shadows window.prompt, so borrow the browser's real one from a hidden iframe. */
-var f=null;
-try{
-f=document.createElement('iframe');f.style.display='none';document.body.appendChild(f);
-var np=f.contentWindow&&f.contentWindow.prompt;
-if(typeof np!=='function')return '';
-return String(np.call(f.contentWindow,'TEST ONLY: paste an Anthropic API key for this browser tab. It is not saved in the app file.')||'').trim();
-}catch(e){return ''}finally{try{if(f)f.remove()}catch(x){}}
-},
-clearTestKey:function(){try{sessionStorage.removeItem('scamsense-test-key')}catch(e){}Provider._asked=false},
-headers:function(){
-var h={'Content-Type':'application/json'};
-if(Provider.proxyUrl)return h;
-var k=Provider.getKey();
-if(!k&&Provider.debug&&!Provider._asked){
-Provider._asked=true;
-k=Provider.askKey();
-if(k)Provider.setTestKey(k);
-}
-if(!k)throw Provider.err('no_key','No API key. Direct mode needs a test key (allow the key prompt - some in-app viewers block it, so open the file in Chrome - or Provider.setTestKey("sk-ant-...")), or set Provider.proxyUrl to your backend.');
-h['x-api-key']=k;
-h['anthropic-version']=Provider.version;
-h['anthropic-dangerous-direct-browser-access']='true';
-return h},
-body:function(messages,stream){var b={model:Provider.model,max_tokens:1000,system:SYSTEM,messages:messages};if(stream)b.stream=true;return JSON.stringify(b)},
-request:async function(messages,stream){
-var res,h=Provider.headers();
-try{
-res=await fetch(Provider.endpoint(),{method:'POST',headers:h,body:Provider.body(messages,stream)});
-}catch(e){
-throw Provider.err('network','Request never reached the API ('+(e&&e.name||'Error')+': '+(e&&e.message||'failed to fetch')+'). Usually CORS, a blocked network, or a wrong proxyUrl.');
-}
-if(!res.ok){
-var txt='';try{txt=await res.text()}catch(e){}
-var msg=txt;try{var j=JSON.parse(txt);if(j&&j.error&&j.error.message)msg=(j.error.type?j.error.type+': ':'')+j.error.message}catch(e){}
-throw Provider.err('http_'+res.status,'HTTP '+res.status+(msg?' - '+String(msg).slice(0,300):' '+res.statusText));
-}
-return res},
-once:async function(messages){
-var res=await Provider.request(messages,false);
-var d=await res.json();
-var t=(d.content||[]).filter(function(c){return c.type==='text'}).map(function(c){return c.text}).join('\n').trim();
-if(!t)throw Provider.err('empty','The API answered but returned no text (stop_reason: '+(d.stop_reason||'unknown')+').');
-return t},
+toText:function(c){
+if(typeof c==='string')return c.trim();
+if(!Array.isArray(c))return '';
+var t=c.filter(function(x){return x&&x.type==='text'}).map(function(x){return x.text}).join('\n');
+if(c.some(function(x){return x&&x.type==='image'}))t+='\n[The person attached a picture, but pictures cannot be sent to this AI service yet.]';
+return t.trim()},
 stream:async function(st,onDelta,messages){
 Provider.lastError=null;
+var fail=function(e){Provider.lastError=e;try{console.error('[ScamSense AI]',e.code,e.message)}catch(x){}return e};
+var arr=messages.slice(),last=arr.pop();
+if(!last||last.role!=='user')throw fail(Provider.err('empty','There was no message to send.'));
+var hist=arr.map(function(m){return{role:m.role==='assistant'?'assistant':'user',content:Provider.toText(m.content)}}).filter(function(m){return m.content});
 var res;
 try{
-res=await Provider.request(messages,true);
-if(!res.body||!res.body.getReader)throw Provider.err('nostream','');
-}catch(e){
-if(e.code!=='nostream'){Provider.lastError=e;try{console.error('[ScamSense AI]',e.code,e.message)}catch(x){}throw e}
-var t=await Provider.once(messages);
-st.text=t;onDelta(t);return t;
-}
-var reader=res.body.getReader(),dec=new TextDecoder(),buf='';
-while(true){
-var r=await reader.read();
-if(r.done)break;
-buf+=dec.decode(r.value,{stream:true});
-var lines=buf.split('\n');buf=lines.pop();
-for(var i=0;i<lines.length;i++){
-var l=lines[i].trim();
-if(l.indexOf('data:')!==0)continue;
-var j=l.slice(5).trim();
-if(!j||j==='[DONE]')continue;
-var ev;try{ev=JSON.parse(j)}catch(x){continue}
-if(ev.type==='content_block_delta'&&ev.delta&&ev.delta.type==='text_delta'){st.text+=ev.delta.text;onDelta(st.text)}
-else if(ev.type==='error'){var se=Provider.err('stream_error','Stream error: '+((ev.error&&(ev.error.type+': '+ev.error.message))||'unknown'));Provider.lastError=se;throw se}
-}
-}
-if(!st.text.trim()){var ee=Provider.err('empty','The stream ended with no text.');Provider.lastError=ee;throw ee}
-return st.text.trim();
-},
-diag:function(){
-var e=Provider.lastError;
-if(!Provider.debug||!e)return '';
-return '<p style="margin:8px 0 0;font-size:13px;line-height:1.4;opacity:.9;word-break:break-word"><b>Connection details (test mode):</b> '+esc(e.message||String(e))+'</p>'}
+res=await fetch(Provider.workerUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:Provider.toText(last.content),history:hist,system:SYSTEM})});
+}catch(e){throw fail(Provider.err('network','Request never reached the ScamSense AI service ('+(e&&e.name||'Error')+').'))}
+var d=null;try{d=await res.json()}catch(e){}
+if(!res.ok||!d||d.error||typeof d.reply!=='string'){
+throw fail(Provider.err('http_'+res.status,'ScamSense AI service: '+String((d&&d.error)||('HTTP '+res.status)).slice(0,300)))}
+var t=d.reply.trim();
+if(!t)throw fail(Provider.err('empty','The AI service returned no text.'));
+st.text=t;onDelta(t);return t},
+diag:function(){return ''}
 };
 
 function warnHead(){return '<div style="display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;color:#FF8A8A;margin:0 0 8px">'+I('alert-triangle','aria-hidden="true" style="font-size:20px"')+'WARNING SIGNS FOUND</div>'}
