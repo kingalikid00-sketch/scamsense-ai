@@ -1,5 +1,12 @@
 {
   "name": "scamsense-ai",
   "main": "worker.js",
-  "compatibility_date": "2026-10-07"
+  "compatibility_date": "2026-10-07",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "scamsense-db",
+      "database_id": "94f5fbec-5b63-40e4-a2ce-eaa5b9b2ea0a"
+    }
+  ]
 }
