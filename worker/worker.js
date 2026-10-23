@@ -14,7 +14,7 @@
 //   -> { "result": { summary, verified[], warningSigns[], supportingEvidence[], unknowns[], nextSteps[] } }
 //   -> { "error": "..." } on failure
 //
-// Chat speed settings: latest 8 turns, 15 s total timeout, one retry on HTTP 429/503 only, output cap 2048 tokens.
+// Chat speed settings: latest 8 turns, 25 s total timeout, low thinking, one retry on HTTP 429/503 only, output cap 2048 tokens.
 //
 // Secret (set in Cloudflare, never in this file): env.GEMINI_API_KEY
 // Optional plain variable:                        env.GEMINI_MODEL  (defaults to DEFAULT_MODEL)
@@ -35,7 +35,7 @@ const MAX_BODY_CHARS = 200000;
 const MAX_TEXT_CHARS = 8000;
 const MAX_SYSTEM_CHARS = 60000;
 const MAX_HISTORY_TURNS = 8;           // latest turns kept for ordinary chat
-const CHAT_TIMEOUT_MS = 15000;         // total time allowed for one chat request (including a retry)
+const CHAT_TIMEOUT_MS = 25000;         // total time allowed for one chat request (including a retry)
 const INV_TIMEOUT_MS = 25000;          // investigations get longer: they build a structured answer
 const CHAT_MAX_OUTPUT_TOKENS = 2048;   // cap for ordinary chat replies
 const RETRY_DELAY_MS = 800;            // short pause before the single retry
@@ -129,7 +129,7 @@ async function callGemini(env, requestBody, origin, opts) {
       console.error("Gemini", label, "attempt", attempt, timedOut ? "timeout" : "network error", "after", Date.now() - started, "ms");
       return { ok: false, response: json({ error: timedOut ? "The AI is taking longer than usual. Please try again in a moment." : "I couldn't reach the AI service. Please try again in a moment." }, 504, origin) };
     }
-    clearTimeout(timer);
+    // The timer keeps running here: it must also cover reading the response body below.
 
     const status = res.status;
     console.log("Gemini", label, "attempt", attempt, "HTTP", status, "in", Date.now() - attemptStart, "ms (total", Date.now() - started, "ms)");
@@ -137,6 +137,7 @@ async function callGemini(env, requestBody, origin, opts) {
     if ((status === 429 || status === 503) && attempt === 1) {
       const left = totalMs - (Date.now() - started);
       if (left > RETRY_DELAY_MS + MIN_RETRY_WINDOW_MS) {
+        clearTimeout(timer);
         try { if (res.body) await res.body.cancel(); } catch (e) { /* ignore */ }
         await sleep(RETRY_DELAY_MS);
         continue;
@@ -145,6 +146,7 @@ async function callGemini(env, requestBody, origin, opts) {
     }
 
     if (!res.ok) {
+      clearTimeout(timer);
       if (status === 429) return { ok: false, response: json({ error: "The AI is busy right now. Please wait a few seconds and try again." }, 429, origin) };
       if (status === 503) return { ok: false, response: json({ error: "The AI service is very busy right now. Please try again in a moment." }, 502, origin) };
       if (status === 400) return { ok: false, response: json({ error: "The AI couldn't process that request." }, 502, origin) };
@@ -156,9 +158,15 @@ async function callGemini(env, requestBody, origin, opts) {
     try {
       data = await res.json();
     } catch (e) {
+      clearTimeout(timer);
+      if (controller.signal.aborted || (e && e.name === "AbortError")) {
+        console.error("Gemini", label, "attempt", attempt, "timeout while reading the response after", Date.now() - started, "ms");
+        return { ok: false, response: json({ error: "The AI is taking longer than usual. Please try again in a moment." }, 504, origin) };
+      }
       console.error("Gemini", label, "returned an unreadable response");
       return { ok: false, response: json({ error: "The AI service had a problem. Please try again in a moment." }, 502, origin) };
     }
+    clearTimeout(timer);
     return { ok: true, data };
   }
   // Not reachable (the loop always returns or continues once), kept as a safe fallback.
@@ -216,7 +224,7 @@ async function handleChat(request, env, origin) {
 
   const requestBody = {
     contents: buildContents(message, payload.history),
-    generationConfig: { maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS },
+    generationConfig: { maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "low" } },
   };
   if (system) requestBody.systemInstruction = { parts: [{ text: system }] };
 
