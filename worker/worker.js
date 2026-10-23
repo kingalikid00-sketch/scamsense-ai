@@ -14,6 +14,8 @@
 //   -> { "result": { summary, verified[], warningSigns[], supportingEvidence[], unknowns[], nextSteps[] } }
 //   -> { "error": "..." } on failure
 //
+// Chat speed settings: latest 8 turns, 15 s total timeout, one retry on HTTP 429/503 only, output cap 2048 tokens.
+//
 // Secret (set in Cloudflare, never in this file): env.GEMINI_API_KEY
 // Optional plain variable:                        env.GEMINI_MODEL  (defaults to DEFAULT_MODEL)
 // Optional rate-limit binding (see guide):        env.INVESTIGATE_LIMITER
@@ -32,8 +34,12 @@ const FIREBASE_JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/se
 const MAX_BODY_CHARS = 200000;
 const MAX_TEXT_CHARS = 8000;
 const MAX_SYSTEM_CHARS = 60000;
-const MAX_HISTORY_TURNS = 20;
-const GEMINI_TIMEOUT_MS = 25000;
+const MAX_HISTORY_TURNS = 8;           // latest turns kept for ordinary chat
+const CHAT_TIMEOUT_MS = 15000;         // total time allowed for one chat request (including a retry)
+const INV_TIMEOUT_MS = 25000;          // investigations get longer: they build a structured answer
+const CHAT_MAX_OUTPUT_TOKENS = 2048;   // cap for ordinary chat replies
+const RETRY_DELAY_MS = 800;            // short pause before the single retry
+const MIN_RETRY_WINDOW_MS = 5000;      // only retry if at least this much time is still left
 
 // Investigation limits
 const INV_MAX_BODY_CHARS = 20000;
@@ -90,42 +96,73 @@ function pickModel(env) {
   return (env.GEMINI_MODEL && /^[A-Za-z0-9._-]+$/.test(env.GEMINI_MODEL)) ? env.GEMINI_MODEL : DEFAULT_MODEL;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Calls Gemini. Returns { ok:true, data } or { ok:false, response } (a ready safe error response).
-async function callGemini(env, requestBody, origin) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
-  let res;
-  try {
-    res = await fetch(GEMINI_BASE + pickModel(env) + ":generateContent", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
-  } catch (e) {
+// Retries ONCE, and only on HTTP 429 or 503, and only if enough of the time budget is left.
+// Logs only: route label, attempt number, HTTP status, elapsed milliseconds. Never keys or content.
+async function callGemini(env, requestBody, origin, opts) {
+  const label = (opts && opts.label) || "chat";
+  const totalMs = (opts && opts.timeoutMs) || CHAT_TIMEOUT_MS;
+  const started = Date.now();
+  const url = GEMINI_BASE + pickModel(env) + ":generateContent";
+  const bodyText = JSON.stringify(requestBody);
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const attemptStart = Date.now();
+    const remaining = Math.max(1, totalMs - (attemptStart - started));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), remaining);
+    let res;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
+        body: bodyText,
+        signal: controller.signal,
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      const timedOut = e && e.name === "AbortError";
+      console.error("Gemini", label, "attempt", attempt, timedOut ? "timeout" : "network error", "after", Date.now() - started, "ms");
+      return { ok: false, response: json({ error: timedOut ? "The AI is taking longer than usual. Please try again in a moment." : "I couldn't reach the AI service. Please try again in a moment." }, 504, origin) };
+    }
     clearTimeout(timer);
-    const timedOut = e && e.name === "AbortError";
-    console.error("Gemini request failed:", timedOut ? "timeout" : "network error");
-    return { ok: false, response: json({ error: timedOut ? "The AI took too long to answer. Please try again." : "I couldn't reach the AI service. Please try again in a moment." }, 504, origin) };
-  }
-  clearTimeout(timer);
 
-  if (!res.ok) {
-    console.error("Gemini returned HTTP", res.status);
-    if (res.status === 429) return { ok: false, response: json({ error: "The AI is busy right now. Please try again in a moment." }, 429, origin) };
-    if (res.status === 400) return { ok: false, response: json({ error: "The AI couldn't process that request." }, 502, origin) };
-    if (res.status === 401 || res.status === 403 || res.status === 404) return { ok: false, response: json({ error: "The AI service isn't set up correctly yet. Please try again later." }, 502, origin) };
-    return { ok: false, response: json({ error: "The AI service had a problem. Please try again in a moment." }, 502, origin) };
-  }
+    const status = res.status;
+    console.log("Gemini", label, "attempt", attempt, "HTTP", status, "in", Date.now() - attemptStart, "ms (total", Date.now() - started, "ms)");
 
-  let data;
-  try {
-    data = await res.json();
-  } catch (e) {
-    console.error("Gemini returned an unreadable response");
-    return { ok: false, response: json({ error: "The AI service had a problem. Please try again in a moment." }, 502, origin) };
+    if ((status === 429 || status === 503) && attempt === 1) {
+      const left = totalMs - (Date.now() - started);
+      if (left > RETRY_DELAY_MS + MIN_RETRY_WINDOW_MS) {
+        try { if (res.body) await res.body.cancel(); } catch (e) { /* ignore */ }
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+      console.log("Gemini", label, "retry skipped: not enough time left");
+    }
+
+    if (!res.ok) {
+      if (status === 429) return { ok: false, response: json({ error: "The AI is busy right now. Please wait a few seconds and try again." }, 429, origin) };
+      if (status === 503) return { ok: false, response: json({ error: "The AI service is very busy right now. Please try again in a moment." }, 502, origin) };
+      if (status === 400) return { ok: false, response: json({ error: "The AI couldn't process that request." }, 502, origin) };
+      if (status === 401 || status === 403 || status === 404) return { ok: false, response: json({ error: "The AI service isn't set up correctly yet. Please try again later." }, 502, origin) };
+      return { ok: false, response: json({ error: "The AI service had a problem. Please try again in a moment." }, 502, origin) };
+    }
+
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      console.error("Gemini", label, "returned an unreadable response");
+      return { ok: false, response: json({ error: "The AI service had a problem. Please try again in a moment." }, 502, origin) };
+    }
+    return { ok: true, data };
   }
-  return { ok: true, data };
+  // Not reachable (the loop always returns or continues once), kept as a safe fallback.
+  return { ok: false, response: json({ error: "The AI service had a problem. Please try again in a moment." }, 502, origin) };
 }
 
 function extractReply(data) {
@@ -177,17 +214,23 @@ async function handleChat(request, env, origin) {
     if (system.length > MAX_SYSTEM_CHARS) return json({ error: "That request was too large." }, 413, origin);
   }
 
-  const requestBody = { contents: buildContents(message, payload.history) };
+  const requestBody = {
+    contents: buildContents(message, payload.history),
+    generationConfig: { maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS },
+  };
   if (system) requestBody.systemInstruction = { parts: [{ text: system }] };
 
-  const g = await callGemini(env, requestBody, origin);
+  const g = await callGemini(env, requestBody, origin, { label: "chat", timeoutMs: CHAT_TIMEOUT_MS });
   if (!g.ok) return g.response;
 
   const reply = extractReply(g.data);
   if (!reply) {
     const blocked = g.data && g.data.promptFeedback && g.data.promptFeedback.blockReason;
-    console.error("Gemini returned no text", blocked ? "(blocked)" : "");
-    return json({ error: blocked ? "I can't help with that request." : "The AI didn't return an answer. Please try again." }, 502, origin);
+    const cut = g.data && g.data.candidates && g.data.candidates[0] && g.data.candidates[0].finishReason === "MAX_TOKENS";
+    console.error("Gemini returned no text", blocked ? "(blocked)" : cut ? "(hit output limit)" : "");
+    if (blocked) return json({ error: "I can't help with that request." }, 502, origin);
+    if (cut) return json({ error: "That answer got too long for me to finish. Please try a shorter or simpler question." }, 502, origin);
+    return json({ error: "The AI didn't return an answer. Please try again." }, 502, origin);
   }
   return json({ reply }, 200, origin);
 }
@@ -479,7 +522,7 @@ async function handleInvestigate(request, env, origin) {
     systemInstruction: { parts: [{ text: INV_SYSTEM }] },
     contents: [{ role: "user", parts: [{ text: buildInvestigationPrompt(v.input) }] }],
     generationConfig: { temperature: 0.3, maxOutputTokens: 4096, responseMimeType: "application/json", responseSchema: INV_SCHEMA },
-  }, origin);
+  }, origin, { label: "investigate", timeoutMs: INV_TIMEOUT_MS });
   if (!g.ok) return g.response;
 
   const blocked = g.data && g.data.promptFeedback && g.data.promptFeedback.blockReason;
