@@ -14,7 +14,7 @@
 //   -> { "result": { summary, verified[], warningSigns[], supportingEvidence[], unknowns[], nextSteps[] } }
 //   -> { "error": "..." } on failure
 //
-// Chat speed settings: latest 8 turns, 25 s total timeout, low thinking, one retry on HTTP 429/503 only, output cap 2048 tokens.
+// Chat speed settings: latest 8 turns, 20 s for the main model then a faster fallback model (40 s total), low thinking, output cap 2048 tokens.
 //
 // Secret (set in Cloudflare, never in this file): env.GEMINI_API_KEY
 // Optional plain variable:                        env.GEMINI_MODEL  (defaults to DEFAULT_MODEL)
@@ -35,7 +35,10 @@ const MAX_BODY_CHARS = 200000;
 const MAX_TEXT_CHARS = 8000;
 const MAX_SYSTEM_CHARS = 60000;
 const MAX_HISTORY_TURNS = 8;           // latest turns kept for ordinary chat
-const CHAT_TIMEOUT_MS = 25000;         // total time allowed for one chat request (including a retry)
+const CHAT_TIMEOUT_MS = 40000;         // total time allowed for one chat request (including the second attempt)
+const CHAT_FIRST_ATTEMPT_MS = 20000;   // the main model gets this long; then the faster fallback model takes over
+const DEFAULT_FALLBACK_MODEL = "gemini-3.5-flash-lite"; // used only for the second chat attempt (set GEMINI_FALLBACK_MODEL to change, or "none" to turn off)
+const MIN_FALLBACK_WINDOW_MS = 8000;   // after a timeout, only switch models if at least this much time is left
 const INV_TIMEOUT_MS = 25000;          // investigations get longer: they build a structured answer
 const CHAT_MAX_OUTPUT_TOKENS = 2048;   // cap for ordinary chat replies
 const RETRY_DELAY_MS = 800;            // short pause before the single retry
@@ -96,6 +99,25 @@ function pickModel(env) {
   return (env.GEMINI_MODEL && /^[A-Za-z0-9._-]+$/.test(env.GEMINI_MODEL)) ? env.GEMINI_MODEL : DEFAULT_MODEL;
 }
 
+function pickFallbackModel(env) {
+  const primary = pickModel(env);
+  const v = env && env.GEMINI_FALLBACK_MODEL;
+  let m = DEFAULT_FALLBACK_MODEL;
+  if (typeof v === "string" && v.trim()) {
+    const t = v.trim();
+    if (t.toLowerCase() === "none" || t.toLowerCase() === "off") return "";
+    if (/^[A-Za-z0-9._-]+$/.test(t)) m = t;
+  }
+  return m === primary ? "" : m;
+}
+
+// The fallback model is a different model, so it does not get the main model's thinking setting.
+function withoutThinking(body) {
+  const gc = Object.assign({}, body.generationConfig);
+  delete gc.thinkingConfig;
+  return Object.assign({}, body, { generationConfig: gc });
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -135,19 +157,27 @@ function serverTiming(res) {
 }
 
 // Calls Gemini. Returns { ok:true, data } or { ok:false, response } (a ready safe error response).
-// Retries ONCE, and only on HTTP 429 or 503, and only if enough of the time budget is left.
+// A second attempt happens ONCE, only after HTTP 429/503 or a timeout of the first attempt, and only if enough
+// of the time budget is left. For chat, the second attempt uses the faster fallback model (if configured).
 // Logs only: route label, attempt, failure stage, HTTP status, timings, sizes and token counts. Never keys or content.
 async function callGemini(env, requestBody, origin, opts) {
   const label = (opts && opts.label) || "chat";
   const totalMs = (opts && opts.timeoutMs) || CHAT_TIMEOUT_MS;
+  const firstMs = (opts && opts.firstAttemptMs) || totalMs;
+  const fallbackModel = (opts && opts.fallbackModel) || "";
   const started = Date.now();
-  const url = GEMINI_BASE + pickModel(env) + ":generateContent";
   const bodyText = JSON.stringify(requestBody);
-  console.log("Gemini", label, "request: model=" + pickModel(env), describeRequest(requestBody, bodyText), "budgetMs=" + totalMs);
+  console.log("Gemini", label, "request: model=" + pickModel(env), describeRequest(requestBody, bodyText), "budgetMs=" + totalMs, "firstAttemptMs=" + firstMs, "fallbackModel=" + (fallbackModel || "none"));
 
   for (let attempt = 1; attempt <= 2; attempt++) {
+    const useFallback = attempt === 2 && !!fallbackModel;
+    const model = useFallback ? fallbackModel : pickModel(env);
+    const url = GEMINI_BASE + model + ":generateContent";
+    const thisBody = useFallback ? JSON.stringify(withoutThinking(requestBody)) : bodyText;
     const attemptStart = Date.now();
-    const remaining = Math.max(1, totalMs - (attemptStart - started));
+    const timeLeft = totalMs - (attemptStart - started);
+    const remaining = Math.max(1, attempt === 1 ? Math.min(firstMs, timeLeft) : timeLeft);
+    console.log("Gemini", label, "attempt", attempt, "using model=" + model, "limitMs=" + remaining);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), remaining);
     let res;
@@ -155,7 +185,7 @@ async function callGemini(env, requestBody, origin, opts) {
       res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY },
-        body: bodyText,
+        body: thisBody,
         signal: controller.signal,
       });
     } catch (e) {
@@ -163,6 +193,10 @@ async function callGemini(env, requestBody, origin, opts) {
       const timedOut = e && e.name === "AbortError";
       console.error("Gemini", label, "attempt", attempt, timedOut ? "timeout" : "network error", "after", Date.now() - started, "ms");
       console.error("Gemini", label, "attempt", attempt, "FAILED stage=waiting-for-response-headers", timedOut ? "reason=no HTTP response received before the deadline" : "reason=network-error");
+      if (timedOut && attempt === 1 && fallbackModel && totalMs - (Date.now() - started) > MIN_FALLBACK_WINDOW_MS) {
+        console.log("Gemini", label, "switching to the fallback model after a timeout");
+        continue;
+      }
       return { ok: false, response: json({ error: timedOut ? "The AI is taking longer than usual. Please try again in a moment." : "I couldn't reach the AI service. Please try again in a moment." }, 504, origin) };
     }
     // The timer keeps running here: it must also cover reading the response body below.
@@ -203,6 +237,10 @@ async function callGemini(env, requestBody, origin, opts) {
       if (controller.signal.aborted || (e && e.name === "AbortError")) {
         console.error("Gemini", label, "attempt", attempt, "timeout while reading the response after", Date.now() - started, "ms");
         console.error("Gemini", label, "attempt", attempt, "FAILED stage=reading-response-body HTTP", status, "(headers arrived after", headersAt - attemptStart, "ms; body not finished)");
+        if (attempt === 1 && fallbackModel && totalMs - (Date.now() - started) > MIN_FALLBACK_WINDOW_MS) {
+          console.log("Gemini", label, "switching to the fallback model after a timeout");
+          continue;
+        }
         return { ok: false, response: json({ error: "The AI is taking longer than usual. Please try again in a moment." }, 504, origin) };
       }
       console.error("Gemini", label, "returned an unreadable response");
@@ -276,7 +314,7 @@ async function handleChat(request, env, origin) {
   };
   if (system) requestBody.systemInstruction = { parts: [{ text: system }] };
 
-  const g = await callGemini(env, requestBody, origin, { label: "chat", timeoutMs: CHAT_TIMEOUT_MS });
+  const g = await callGemini(env, requestBody, origin, { label: "chat", timeoutMs: CHAT_TIMEOUT_MS, firstAttemptMs: CHAT_FIRST_ATTEMPT_MS, fallbackModel: pickFallbackModel(env) });
   if (!g.ok) return g.response;
 
   const reply = extractReply(g.data);
