@@ -100,15 +100,50 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ---- Safe diagnostics: these only ever report numbers, counts and short fixed labels.
+// They never include the API key, message text, system text, or Google's error message.
+function safeNum(v) {
+  return typeof v === "number" && isFinite(v) ? v : "n/a";
+}
+
+function describeRequest(requestBody, bodyText) {
+  const gc = (requestBody && requestBody.generationConfig) || {};
+  const tl = gc.thinkingConfig && gc.thinkingConfig.thinkingLevel;
+  const sp = requestBody && requestBody.systemInstruction && requestBody.systemInstruction.parts && requestBody.systemInstruction.parts[0];
+  return "bodyChars=" + bodyText.length +
+    " contents=" + (requestBody && Array.isArray(requestBody.contents) ? requestBody.contents.length : 0) +
+    " systemChars=" + (sp && typeof sp.text === "string" ? sp.text.length : 0) +
+    " thinking=" + (tl === "low" || tl === "medium" || tl === "high" ? tl : "default") +
+    " maxOut=" + safeNum(gc.maxOutputTokens);
+}
+
+// Reads a small Gemini error body and reports only its numeric code and status word, never its message.
+async function errorTag(res) {
+  try {
+    const t = (await res.text()).slice(0, 4000);
+    const e = JSON.parse(t).error || {};
+    const word = typeof e.status === "string" && /^[A-Z_]{3,40}$/.test(e.status) ? e.status : "n/a";
+    return "googleCode=" + safeNum(e.code) + " googleStatus=" + word;
+  } catch (e) {
+    return "googleCode=n/a googleStatus=n/a";
+  }
+}
+
+function serverTiming(res) {
+  const v = res.headers && res.headers.get("server-timing");
+  return typeof v === "string" && /^[A-Za-z0-9_;=., -]{1,80}$/.test(v) ? v : "n/a";
+}
+
 // Calls Gemini. Returns { ok:true, data } or { ok:false, response } (a ready safe error response).
 // Retries ONCE, and only on HTTP 429 or 503, and only if enough of the time budget is left.
-// Logs only: route label, attempt number, HTTP status, elapsed milliseconds. Never keys or content.
+// Logs only: route label, attempt, failure stage, HTTP status, timings, sizes and token counts. Never keys or content.
 async function callGemini(env, requestBody, origin, opts) {
   const label = (opts && opts.label) || "chat";
   const totalMs = (opts && opts.timeoutMs) || CHAT_TIMEOUT_MS;
   const started = Date.now();
   const url = GEMINI_BASE + pickModel(env) + ":generateContent";
   const bodyText = JSON.stringify(requestBody);
+  console.log("Gemini", label, "request: model=" + pickModel(env), describeRequest(requestBody, bodyText), "budgetMs=" + totalMs);
 
   for (let attempt = 1; attempt <= 2; attempt++) {
     const attemptStart = Date.now();
@@ -127,12 +162,18 @@ async function callGemini(env, requestBody, origin, opts) {
       clearTimeout(timer);
       const timedOut = e && e.name === "AbortError";
       console.error("Gemini", label, "attempt", attempt, timedOut ? "timeout" : "network error", "after", Date.now() - started, "ms");
+      console.error("Gemini", label, "attempt", attempt, "FAILED stage=waiting-for-response-headers", timedOut ? "reason=no HTTP response received before the deadline" : "reason=network-error");
       return { ok: false, response: json({ error: timedOut ? "The AI is taking longer than usual. Please try again in a moment." : "I couldn't reach the AI service. Please try again in a moment." }, 504, origin) };
     }
     // The timer keeps running here: it must also cover reading the response body below.
 
     const status = res.status;
-    console.log("Gemini", label, "attempt", attempt, "HTTP", status, "in", Date.now() - attemptStart, "ms (total", Date.now() - started, "ms)");
+    const headersAt = Date.now();
+    console.log("Gemini", label, "attempt", attempt, "HTTP", status, "in", headersAt - attemptStart, "ms (total", headersAt - started, "ms)", "serverTiming=" + serverTiming(res));
+    if (!res.ok) {
+      // Small error body, still covered by the running timer. Only the code and status word are logged.
+      console.error("Gemini", label, "attempt", attempt, "FAILED stage=http-error HTTP", status, await errorTag(res));
+    }
 
     if ((status === 429 || status === 503) && attempt === 1) {
       const left = totalMs - (Date.now() - started);
@@ -161,12 +202,19 @@ async function callGemini(env, requestBody, origin, opts) {
       clearTimeout(timer);
       if (controller.signal.aborted || (e && e.name === "AbortError")) {
         console.error("Gemini", label, "attempt", attempt, "timeout while reading the response after", Date.now() - started, "ms");
+        console.error("Gemini", label, "attempt", attempt, "FAILED stage=reading-response-body HTTP", status, "(headers arrived after", headersAt - attemptStart, "ms; body not finished)");
         return { ok: false, response: json({ error: "The AI is taking longer than usual. Please try again in a moment." }, 504, origin) };
       }
       console.error("Gemini", label, "returned an unreadable response");
+      console.error("Gemini", label, "attempt", attempt, "FAILED stage=parsing-response-body HTTP", status);
       return { ok: false, response: json({ error: "The AI service had a problem. Please try again in a moment." }, 502, origin) };
     }
     clearTimeout(timer);
+    const um = (data && data.usageMetadata) || {};
+    const fr = data && data.candidates && data.candidates[0] && data.candidates[0].finishReason;
+    console.log("Gemini", label, "attempt", attempt, "done: headersMs=" + (headersAt - attemptStart), "bodyMs=" + (Date.now() - headersAt),
+      "finish=" + (typeof fr === "string" && /^[A-Z_]{3,30}$/.test(fr) ? fr : "n/a"),
+      "promptTokens=" + safeNum(um.promptTokenCount), "outputTokens=" + safeNum(um.candidatesTokenCount), "thoughtTokens=" + safeNum(um.thoughtsTokenCount));
     return { ok: true, data };
   }
   // Not reachable (the loop always returns or continues once), kept as a safe fallback.
