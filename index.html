@@ -1164,7 +1164,7 @@ ScamSenseAuth.adapter.cloudList(uid).then(function(list){sbMerge(uid,list)}).cat
 }else if(S.uid){
 sbFlush();Draft.switchTo(null);S.uid=null;SB_LAST={};S.sbStatus='';
 S.sessions=[];S.cur=newSession();S.busy=false;sbClose();
-if(S.view==='chat'||S.view==='history')go('chat');else render()}}
+if(S.view==='chat'||S.view==='history'){go('cm_home');try{if(window.CM&&CM.feedState!=='ok'&&typeof loadFeed==='function')loadFeed()}catch(e){}}else render()}}
 window.addEventListener('online',function(){sbSave()});
 function sbEl(){var e=document.getElementById('sb');if(!e){e=document.createElement('div');e.id='sb';e.className='sb';$('#app').appendChild(e)}return e}
 function sbOpen(){var e=sbEl(),l=S.sessions.map(function(x,i){return '<button class="sb-i'+(x===S.cur?' on':'')+'" data-act="sb-open" data-arg="'+i+'">'+esc(x.title||'New chat')+'</button>'}).reverse().join('')||'<div class="sb-e">No chats yet.</div>';var was=e.className.indexOf('on')>-1;e.innerHTML='<div class="sb-bd" data-act="sb-close"></div><aside class="sb-p"><div class="sb-t"><span>Chat history</span><button class="ib" data-act="sb-close" aria-label="Close">'+I('x','')+'</button></div><button class="sb-new" data-act="sb-new">+ New chat</button><button class="sb-i" data-act="cm-open" style="margin:0 0 10px;color:#4D9BFF">Home</button><div class="sb-l">'+l+'</div><div class="sb-e" role="status">'+esc(S.uid?S.sbStatus:'Saved on this device only. Sign in to keep your chats in your account.')+'</div></aside>';e.className=was?'sb on nx':'sb on'}
