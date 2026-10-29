@@ -5153,8 +5153,9 @@ return box+sec('Recent Posts')+(CM.dState==='ok'?pcards(rec,'No posts yet. Be th
 $('#app').addEventListener('keydown',function(e){if(e.target&&e.target.id==='cm-dq'&&e.key==='Enter'){e.preventDefault();runSearch()}});
 $('#app').addEventListener('input',function(e){if(e.target&&e.target.id==='cm-dq')CM.dq=e.target.value});
 NEWNAMES.cm_feed='Home';NEWNAMES.cm_home='Home';NEWNAMES.cm_discover='Discover';
-/* first page = the community feed; the AI chatbot is its own page (AI Assistant in the nav, or the chat button in the header) */
-try{go2('cm_home');loadFeed()}catch(e){try{console.error('[Community start]',e)}catch(x){}}
+/* Landing action runs inside the Community module, where go2 and loadFeed are in scope. */
+window.__ssOpenCommunityHome=function(){try{go2('cm_home');if(CM.feedState!=='loading')loadFeed();return true}catch(e){try{console.error('[Community start]',e)}catch(x){}return false}};
+try{window.__ssOpenCommunityHome()}catch(e){}
 })()}catch(e){try{console.error('[Community]',e)}catch(x){}}
 </script>
 <script>
@@ -5829,30 +5830,18 @@ if(k!=='ai'&&m&&m.scrollTop>0){try{m.scrollTo({top:0,behavior:reduce()?'auto':'s
 })()}catch(e){try{console.error('[Navigation]',e)}catch(x){}}
 </script>
 <script>
-/* Startup landing page: Community Home is the first screen on every fresh app load.
-   Retry briefly because the Community module is loaded after the main chat module. */
+/* Final landing check calls the Community module's scoped navigation action. */
 (function(){
-  var tries=0,done=false,timer=0;
-  function openCommunityHome(){
-    if(done)return;
-    try{
-      var state=window.S,views=window.Views,draw=window.render;
-      if(state&&views&&typeof views.cm_home==='function'&&typeof draw==='function'){
-        done=true;clearInterval(timer);
-        state.view='cm_home';
-        draw();
-        return;
-      }
-    }catch(e){try{console.error('[Community landing]',e)}catch(x){}}
-    if(++tries>=40)clearInterval(timer);
-  }
   function start(){
-    openCommunityHome();
-    if(!done)timer=setInterval(openCommunityHome,200);
+    if(typeof window.__ssOpenCommunityHome==='function'){
+      window.__ssOpenCommunityHome();
+      return;
+    }
+    setTimeout(start,200);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
   else start();
-  window.addEventListener('pageshow',function(){if(!done)start()});
+  window.addEventListener('pageshow',start);
 })();
 </script>
 </body>
