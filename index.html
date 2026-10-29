@@ -5828,5 +5828,20 @@ if(k!=='ai'&&m&&m.scrollTop>0){try{m.scrollTo({top:0,behavior:reduce()?'auto':'s
 },true);
 })()}catch(e){try{console.error('[Navigation]',e)}catch(x){}}
 </script>
+<script>
+/* Startup landing page: open Community Home after all app modules initialise. */
+(function(){
+  function openCommunityHome(){
+    try{
+      if(window.S && window.Views && typeof window.Views.cm_home==='function' && typeof window.render==='function'){
+        window.S.view='cm_home';
+        window.render();
+      }
+    }catch(e){try{console.error('[Community landing]',e)}catch(x){}}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',openCommunityHome,{once:true});
+  else openCommunityHome();
+})();
+</script>
 </body>
 </html>
