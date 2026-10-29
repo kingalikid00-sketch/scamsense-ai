@@ -4630,14 +4630,17 @@ if(e&&e.message==='type'||c==='type')return 'Please choose a JPG, PNG, WebP or H
 if(c==='toobig')return 'That photo is too large. Please choose a photo under 15 MB.';
 if(c==='bad')return 'That photo couldn’t be read. Some phones save in a format the browser can’t open — try a screenshot or another photo.';
 return 'That photo couldn’t be used.'}
-function upErr(e){var c=String(e&&e.code||'');try{console.error('[Community upload]',c,e&&e.message)}catch(x){}
-if(/storage\/unauthorized|storage\/unauthenticated/.test(c))return 'Photo upload was refused. Make sure you’re signed in. (If you run this app, check that Firebase Storage rules allow signed-in users to upload to communityPhotos/.)';
-if(/storage\/bucket-not-found|storage\/project-not-found|storage\/no-default-bucket/.test(c))return 'Photo upload isn’t set up yet. (If you run this app, enable Firebase Storage in the Firebase console and check the storageBucket in the app config.)';
-if(/storage\/quota-exceeded/.test(c))return 'Photo storage is full right now. Please try again later.';
-if(/storage\/retry-limit-exceeded|storage\/canceled|network|unavailable/.test(c)||navigator.onLine===false)return 'The photo didn’t finish uploading. Please check your connection and try again. Your post wasn’t published.';
-if(/storage\/invalid-argument|storage\/server-file-wrong-size/.test(c))return 'The photo couldn’t be uploaded. Please choose it again.';
-if(!c&&/Failed to fetch|dynamically imported|import|module/i.test(String(e&&e.message||'')))return 'We couldn’t load the photo upload service. Please check your connection or any content blocker, then try again.';
-return 'The photo couldn’t be uploaded, so your post wasn’t published. Please try again.'+(c?' (Error: '+c.replace(/[^\w\/.-]/g,'').slice(0,60)+')':'')}
+function upErr(e){var c=String(e&&e.code||''),m=String(e&&e.message||'').trim();try{console.error('[Community upload]',c,m)}catch(x){}
+if(/storage\\/unauthorized|storage\\/unauthenticated/.test(c))return 'Photo upload was refused. Make sure you’re signed in.';
+if(/storage\\/bucket-not-found|storage\\/project-not-found|storage\\/no-default-bucket/.test(c))return 'Photo storage is not configured yet.';
+if(/storage\\/quota-exceeded/.test(c))return 'Photo storage is full right now. Please try again later.';
+if(/storage\\/retry-limit-exceeded|storage\\/canceled|network|unavailable/i.test(c)||/network error/i.test(m)||navigator.onLine===false)return 'The photo didn’t finish uploading. Please check your connection and try again.';
+if(/storage\\/invalid-argument|storage\\/server-file-wrong-size/.test(c))return 'The photo couldn’t be uploaded. Please choose it again.';
+if(/preset.*not found|unknown upload preset/i.test(m))return 'Cloudinary could not find the upload preset “scamsense_community”. Check its name and make sure it is set to Unsigned.';
+if(/unsigned.*disabled|not allowed.*unsigned/i.test(m))return 'Cloudinary is not allowing unsigned uploads. Set the scamsense_community preset to Unsigned.';
+if(/Invalid cloud name/i.test(m))return 'The photo upload account name is incorrect.';
+if(!c&&/Failed to fetch|dynamically imported|import|module/i.test(m))return 'We couldn’t reach the photo upload service. Check your connection and try again.';
+return 'Photo upload failed'+(m?': '+m.slice(0,180):c?' (Error: '+c.replace(/[^\\w\\/.-]/g,'').slice(0,60)+')':'.')+' Your post wasn’t published.'}
 function uploadPhoto(ph){return new Promise(function(ok,no){var x=new XMLHttpRequest(),fd=new FormData();fd.append('upload_preset','scamsense_community');fd.append('file',ph.blob,'community-photo.jpg');x.open('POST','https://api.cloudinary.com/v1_1/kv2o77gy/image/upload',true);x.timeout=90000;x.upload.onprogress=function(ev){var pc=ev.lengthComputable?Math.round(ev.loaded/ev.total*100):0;CM.upPct=pc;var el=document.getElementById('cm-up');if(el)el.textContent='Uploading photo… '+pc+'%'};x.onload=function(){var d={};try{d=JSON.parse(x.responseText||'{}')}catch(e){}if(x.status>=200&&x.status<300&&d.secure_url){CM.upPct=100;ok(d.secure_url)}else no(new Error(d.error&&d.error.message||'Cloudinary upload failed (HTTP '+x.status+').'))};x.onerror=function(){no(new Error('Network error during photo upload.'))};x.ontimeout=function(){no(new Error('Photo upload timed out. Try a smaller photo or better connection.'))};x.send(fd)})}
 /* zoom viewer */
 function zoomOpen(id){var p=find(id)||(CM.post&&CM.post.id===id?CM.post:null);if(!p||!okImg(p.image))return;zoomClose();
