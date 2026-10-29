@@ -4617,7 +4617,7 @@ if(k+1<sizes.length)go(k+1);else no(new Error('toobig'))},'image/jpeg',k?0.78:0.
 go(0)};
 im.onerror=function(){URL.revokeObjectURL(u);no(new Error('bad'))};im.src=u})}
 function dropPhoto(){var ph=CM.draft.photo;if(ph&&ph.url){try{URL.revokeObjectURL(ph.url)}catch(e){}}CM.draft.photo=null}
-function okImg(u){u=String(u||'');return /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[\w.\-]+\/o\/[^\s"'<>]+$/.test(u)||/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(u)}
+function okImg(u){u=String(u||'');return /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[\w.\-]+\/o\/[^\s"'<>]+$/.test(u)||/^https:\/\/res\.cloudinary\.com\/kv2o77gy\/image\/upload\/[A-Za-z0-9_.,\/-]+\.(?:jpe?g|png|webp|avif)(?:\?[^\s"'<>]*)?$/i.test(u)||/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(u)}
 function pic(p,big){if(!p||!p.image||!okImg(p.image))return '';
 return '<button type="button" class="cm-pic'+(big?' big':'')+'" data-act="cm-zoom" data-arg="'+esc(p.id||'')+'" aria-label="View photo larger"><img src="'+esc(p.image)+'" alt="Photo shared with this post" loading="lazy" decoding="async"></button>'}
 function picUI(inline){var ph=CM.draft.photo,h='';
