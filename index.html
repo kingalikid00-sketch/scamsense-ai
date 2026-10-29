@@ -5829,18 +5829,30 @@ if(k!=='ai'&&m&&m.scrollTop>0){try{m.scrollTo({top:0,behavior:reduce()?'auto':'s
 })()}catch(e){try{console.error('[Navigation]',e)}catch(x){}}
 </script>
 <script>
-/* Startup landing page: open Community Home after all app modules initialise. */
+/* Startup landing page: Community Home is the first screen on every fresh app load.
+   Retry briefly because the Community module is loaded after the main chat module. */
 (function(){
+  var tries=0,done=false,timer=0;
   function openCommunityHome(){
+    if(done)return;
     try{
-      if(window.S && window.Views && typeof window.Views.cm_home==='function' && typeof window.render==='function'){
-        window.S.view='cm_home';
-        window.render();
+      var state=window.S,views=window.Views,draw=window.render;
+      if(state&&views&&typeof views.cm_home==='function'&&typeof draw==='function'){
+        done=true;clearInterval(timer);
+        state.view='cm_home';
+        draw();
+        return;
       }
     }catch(e){try{console.error('[Community landing]',e)}catch(x){}}
+    if(++tries>=40)clearInterval(timer);
   }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',openCommunityHome,{once:true});
-  else openCommunityHome();
+  function start(){
+    openCommunityHome();
+    if(!done)timer=setInterval(openCommunityHome,200);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
+  else start();
+  window.addEventListener('pageshow',function(){if(!done)start()});
 })();
 </script>
 </body>
