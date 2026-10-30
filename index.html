@@ -4599,7 +4599,7 @@ else if(k==='settings'){CM.mState='';go2('cm_settings');loadSP();loadBlockNames(
 else if(k==='discover'){go2('cm_discover');loadDiscover()}}
 function find(id){var a=CM.feed.concat(CM.dpool||[],CM.mine,CM.saved,CM.prof&&CM.prof.posts||[],CM.prof&&CM.prof.rps||[],CM.prof&&CM.prof.likes||[]);for(var i=0;i<a.length;i++)if(a[i].id===id)return a[i];return null}
 function openPost(id){CM.prev=S.view;CM.post=find(id);CM.comments=[];CM.cDraft='';CM.cState='loading';go2('cm_post');loadPost(id)}
-/* ---- photo posts: validate, resize/re-encode (strips EXIF + location), upload to Firebase Storage ---- */
+/* ---- photo posts: validate, resize/re-encode (strips EXIF + location), upload to Cloudinary ---- */
 var PIC_MAX_IN=15*1024*1024,PIC_MAX_OUT=1.5*1024*1024,PIC_TYPES=/^image\/(jpeg|png|webp|heic|heif)$/i;
 function prepPhoto(file){return new Promise(function(ok,no){
 var ext=(String(file.name||'').split('.').pop()||'').toLowerCase();
@@ -4617,7 +4617,7 @@ if(k+1<sizes.length)go(k+1);else no(new Error('toobig'))},'image/jpeg',k?0.78:0.
 go(0)};
 im.onerror=function(){URL.revokeObjectURL(u);no(new Error('bad'))};im.src=u})}
 function dropPhoto(){var ph=CM.draft.photo;if(ph&&ph.url){try{URL.revokeObjectURL(ph.url)}catch(e){}}CM.draft.photo=null}
-function okImg(u){u=String(u||'');return /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[\w.\-]+\/o\/[^\s"'<>]+$/.test(u)||/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(u)}
+function okImg(u){u=String(u||'');return /^https:\/\/res\.cloudinary\.com\/kv2o77gy\/image\/upload\/[^\s"'<>]+$/.test(u)||/^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[\w.\-]+\/o\/[^\s"'<>]+$/.test(u)||/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(u)}
 function pic(p,big){if(!p||!p.image||!okImg(p.image))return '';
 return '<button type="button" class="cm-pic'+(big?' big':'')+'" data-act="cm-zoom" data-arg="'+esc(p.id||'')+'" aria-label="View photo larger"><img src="'+esc(p.image)+'" alt="Photo shared with this post" loading="lazy" decoding="async"></button>'}
 function picUI(inline){var ph=CM.draft.photo,h='';
@@ -4630,16 +4630,12 @@ if(e&&e.message==='type'||c==='type')return 'Please choose a JPG, PNG, WebP or H
 if(c==='toobig')return 'That photo is too large. Please choose a photo under 15 MB.';
 if(c==='bad')return 'That photo couldn’t be read. Some phones save in a format the browser can’t open — try a screenshot or another photo.';
 return 'That photo couldn’t be used.'}
-function upErr(e){var c=String(e&&e.code||'');try{console.error('[Community upload]',c,e&&e.message)}catch(x){}
-if(/storage\/unauthorized|storage\/unauthenticated/.test(c))return 'Photo upload was refused. Make sure you’re signed in. (If you run this app, check that Firebase Storage rules allow signed-in users to upload to communityPhotos/.)';
-if(/storage\/bucket-not-found|storage\/project-not-found|storage\/no-default-bucket/.test(c))return 'Photo upload isn’t set up yet. (If you run this app, enable Firebase Storage in the Firebase console and check the storageBucket in the app config.)';
-if(/storage\/quota-exceeded/.test(c))return 'Photo storage is full right now. Please try again later.';
-if(/storage\/retry-limit-exceeded|storage\/canceled|network|unavailable/.test(c)||navigator.onLine===false)return 'The photo didn’t finish uploading. Please check your connection and try again. Your post wasn’t published.';
-if(/storage\/invalid-argument|storage\/server-file-wrong-size/.test(c))return 'The photo couldn’t be uploaded. Please choose it again.';
-if(!c&&/Failed to fetch|dynamically imported|import|module/i.test(String(e&&e.message||'')))return 'We couldn’t load the photo upload service. Please check your connection or any content blocker, then try again.';
-return 'The photo couldn’t be uploaded, so your post wasn’t published. Please try again.'+(c?' (Error: '+c.replace(/[^\w\/.-]/g,'').slice(0,60)+')':'')}
-function uploadPhoto(ph){return FirebaseAdapter.storage().then(function(f){var M=f.M,path='communityPhotos/'+uid()+'/'+Date.now().toString(36)+Math.random().toString(36).slice(2,8)+'.jpg',r=M.ref(f.st,path),t=M.uploadBytesResumable(r,ph.blob,{contentType:'image/jpeg',cacheControl:'public,max-age=31536000'});
-return new Promise(function(ok,no){t.on('state_changed',function(sn){var pc=sn.totalBytes?Math.round(sn.bytesTransferred/sn.totalBytes*100):0;CM.upPct=pc;var el=document.getElementById('cm-up');if(el)el.textContent='Uploading photo… '+pc+'%'},no,function(){M.getDownloadURL(t.snapshot.ref).then(ok,no)})})})}
+function upErr(e){var m=String(e&&e.message||'');try{console.error('[Cloudinary community upload]',e)}catch(x){}
+if(/preset|upload preset/i.test(m))return 'Photo upload settings need checking. Please contact support.';
+if(/file size|too large/i.test(m))return 'That photo is too large. Please choose a smaller photo.';
+if(navigator.onLine===false||/network|timeout|failed to fetch/i.test(m))return 'The photo didn’t finish uploading. Check your connection and try again. Your post wasn’t published.';
+return 'The photo couldn’t be uploaded, so your post wasn’t published. Please try again.'}
+function uploadPhoto(ph){return new Promise(function(ok,no){var x=new XMLHttpRequest(),fd=new FormData();fd.append('file',ph.blob,'scamsense-photo.jpg');fd.append('upload_preset','scamsense_community');x.open('POST','https://api.cloudinary.com/v1_1/kv2o77gy/image/upload',true);x.timeout=60000;x.upload.onprogress=function(ev){if(ev.lengthComputable){CM.upPct=Math.round(ev.loaded/ev.total*100);var el=document.getElementById('cm-up');if(el)el.textContent='Uploading photo… '+CM.upPct+'%'}};x.onload=function(){var data={};try{data=JSON.parse(x.responseText||'{}')}catch(e){}if(x.status>=200&&x.status<300&&data.secure_url){ok(data.secure_url);return}no(new Error(data.error&&data.error.message||('Cloudinary upload failed ('+x.status+')')))};x.onerror=function(){no(new Error('Network error while uploading'))};x.ontimeout=function(){no(new Error('Upload timeout'))};x.send(fd)})}
 /* zoom viewer */
 function zoomOpen(id){var p=find(id)||(CM.post&&CM.post.id===id?CM.post:null);if(!p||!okImg(p.image))return;zoomClose();
 var e=document.createElement('div');e.id='cmzoom';e.setAttribute('role','dialog');e.setAttribute('aria-modal','true');e.setAttribute('aria-label','Photo viewer');
