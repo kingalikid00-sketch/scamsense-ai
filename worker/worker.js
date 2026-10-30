@@ -289,6 +289,60 @@ async function callGemini(env, requestBody, origin, opts) {
   return { ok: false, response: json({ error: "The AI service had a problem. Please try again in a moment." }, 502, origin) };
 }
 
+// OpenRouter is a text-only backup for ordinary chat. Images and structured investigations stay on Gemini.
+async function callOpenRouter(env, requestBody) {
+  if (!env || !env.OPENROUTER_API_KEY) return { ok: false };
+  const configured = typeof env.OPENROUTER_MODEL === "string" ? env.OPENROUTER_MODEL.trim() : "";
+  const model = configured && /^[A-Za-z0-9._:/-]{1,120}$/.test(configured) ? configured : "openrouter/free";
+  const messages = [];
+  const systemParts = requestBody.systemInstruction && requestBody.systemInstruction.parts;
+  if (Array.isArray(systemParts)) {
+    const systemText = systemParts.map((p) => p && typeof p.text === "string" ? p.text : "").join("\n").trim();
+    if (systemText) messages.push({ role: "system", content: systemText });
+  }
+  for (const turn of (requestBody.contents || [])) {
+    const role = turn && turn.role === "model" ? "assistant" : "user";
+    const parts = Array.isArray(turn && turn.parts) ? turn.parts : [];
+    const content = parts.map((p) => p && typeof p.text === "string" ? p.text : "").filter(Boolean).join("\n");
+    if (content) messages.push({ role, content });
+  }
+  if (!messages.length) return { ok: false };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 18000);
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + env.OPENROUTER_API_KEY,
+        "Content-Type": "application/json",
+        "HTTP-Referer": ALLOWED_ORIGIN,
+        "X-Title": "ScamSense AI",
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        max_tokens: CHAT_MAX_OUTPUT_TOKENS,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      console.error("OpenRouter chat fallback HTTP", res.status);
+      return { ok: false };
+    }
+    const data = await res.json();
+    const choice = data && data.choices && data.choices[0];
+    const content = choice && choice.message && choice.message.content;
+    const reply = typeof content === "string" ? content.trim() :
+      Array.isArray(content) ? content.map((p) => p && typeof p.text === "string" ? p.text : "").join("").trim() : "";
+    return reply ? { ok: true, reply } : { ok: false };
+  } catch (e) {
+    console.error("OpenRouter chat fallback", e && e.name === "AbortError" ? "timeout" : "network error");
+    return { ok: false };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function extractReply(data) {
   const parts = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
   if (!Array.isArray(parts)) return "";
@@ -345,7 +399,14 @@ async function handleChat(request, env, origin) {
   if (system) requestBody.systemInstruction = { parts: [{ text: system }] };
 
   const g = await callGemini(env, requestBody, origin, { label: "chat", timeoutMs: CHAT_TIMEOUT_MS, firstAttemptMs: CHAT_FIRST_ATTEMPT_MS, fallbackModel: pickFallbackModel(env) });
-  if (!g.ok) return g.response;
+  if (!g.ok) {
+    const backup = await callOpenRouter(env, requestBody);
+    if (backup.ok) {
+      console.log("OpenRouter chat fallback succeeded");
+      return json({ reply: backup.reply }, 200, origin);
+    }
+    return g.response;
+  }
 
   const reply = extractReply(g.data);
   if (!reply) {
