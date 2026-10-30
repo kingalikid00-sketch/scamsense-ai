@@ -1837,7 +1837,7 @@ var T=Concierge.learn(t,route);route.T=T;route.text=t;
 TrustCheck.learn(t,route,T,!!b64);
 var isPreset=Object.keys(IMG_PRESETS).some(function(k){return IMG_PRESETS[k]===t});
 var ask=ChatTools.expect(route,t,!!b64);if(ask==='payment')route.toolNote=ChatTools.PAYNOTE;else if(ask==='message')route.toolNote=ChatTools.MSGNOTE;
-var loc=(route.check&&!isPreset)?Analysis.run(t):null;
+var loc=(route.intent==='check_link'&&!isPreset)?Analysis.run(t):null;
 var content=b64?[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},{type:'text',text:t}]:t;
 S.cur.api.push({role:'user',content:content});
 var sc=(!b64&&!isPreset&&!route.tc)?chatShortcut(t,route,T):null;
