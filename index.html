@@ -1164,7 +1164,7 @@ ScamSenseAuth.adapter.cloudList(uid).then(function(list){sbMerge(uid,list)}).cat
 }else if(S.uid){
 sbFlush();Draft.switchTo(null);S.uid=null;SB_LAST={};S.sbStatus='';
 S.sessions=[];S.cur=newSession();S.busy=false;sbClose();
-if(S.view==='chat'||S.view==='history'){go('cm_home');try{if(window.CM&&CM.feedState!=='ok'&&typeof loadFeed==='function')loadFeed()}catch(e){}}else render()}}
+if(S.view==='chat'||S.view==='history')go('chat');else render()}}
 window.addEventListener('online',function(){sbSave()});
 function sbEl(){var e=document.getElementById('sb');if(!e){e=document.createElement('div');e.id='sb';e.className='sb';$('#app').appendChild(e)}return e}
 function sbOpen(){var e=sbEl(),l=S.sessions.map(function(x,i){return '<button class="sb-i'+(x===S.cur?' on':'')+'" data-act="sb-open" data-arg="'+i+'">'+esc(x.title||'New chat')+'</button>'}).reverse().join('')||'<div class="sb-e">No chats yet.</div>';var was=e.className.indexOf('on')>-1;e.innerHTML='<div class="sb-bd" data-act="sb-close"></div><aside class="sb-p"><div class="sb-t"><span>Chat history</span><button class="ib" data-act="sb-close" aria-label="Close">'+I('x','')+'</button></div><button class="sb-new" data-act="sb-new">+ New chat</button><button class="sb-i" data-act="cm-open" style="margin:0 0 10px;color:#4D9BFF">Home</button><div class="sb-l">'+l+'</div><div class="sb-e" role="status">'+esc(S.uid?S.sbStatus:'Saved on this device only. Sign in to keep your chats in your account.')+'</div></aside>';e.className=was?'sb on nx':'sb on'}
@@ -1837,7 +1837,7 @@ var T=Concierge.learn(t,route);route.T=T;route.text=t;
 TrustCheck.learn(t,route,T,!!b64);
 var isPreset=Object.keys(IMG_PRESETS).some(function(k){return IMG_PRESETS[k]===t});
 var ask=ChatTools.expect(route,t,!!b64);if(ask==='payment')route.toolNote=ChatTools.PAYNOTE;else if(ask==='message')route.toolNote=ChatTools.MSGNOTE;
-var loc=(route.intent==='check_link'&&!isPreset)?Analysis.run(t):null;
+var loc=(route.check&&!isPreset)?Analysis.run(t):null;
 var content=b64?[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},{type:'text',text:t}]:t;
 S.cur.api.push({role:'user',content:content});
 var sc=(!b64&&!isPreset&&!route.tc)?chatShortcut(t,route,T):null;
@@ -4160,8 +4160,6 @@ H.classList.remove('ss-boot');window.__ssBootDone=1;
 if(kind==='app'){if(w&&w.parentNode)w.parentNode.removeChild(w);window.__ssOpen()}else{H.classList.add('ss-go')}
 if(e)e.classList.add('out');
 try{window.dispatchEvent(new Event('ss-sync'))}catch(x){}
-/* Once authentication has selected the real app screen, open Community Home. The community module registers this action after the main chat module loads. */
-if(kind==='app'){try{if(typeof window.__ssOpenCommunityHome==='function')window.__ssOpenCommunityHome();else window.__ssCommunityLandingPending=true}catch(x){window.__ssCommunityLandingPending=true}}
 try{if(kind==='resume'&&B.resume)B.resume(B.user);else if(window.__ssPend){var f=window.__ssPend;window.__ssPend=null;f()}}catch(x){}
 if(e)setTimeout(function(){if(e.parentNode)e.parentNode.removeChild(e)},calm?300:850)}
 function go(){if(B.done)return;var k=decide();if(!k&&now()<LIMIT)return;reveal(k||(ret?'app':'login'))}
@@ -4619,7 +4617,7 @@ if(k+1<sizes.length)go(k+1);else no(new Error('toobig'))},'image/jpeg',k?0.78:0.
 go(0)};
 im.onerror=function(){URL.revokeObjectURL(u);no(new Error('bad'))};im.src=u})}
 function dropPhoto(){var ph=CM.draft.photo;if(ph&&ph.url){try{URL.revokeObjectURL(ph.url)}catch(e){}}CM.draft.photo=null}
-function okImg(u){u=String(u||'');return /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[\w.\-]+\/o\/[^\s"'<>]+$/.test(u)||/^https:\/\/res\.cloudinary\.com\/kv2o77gy\/image\/upload\/[A-Za-z0-9_.,\/-]+\.(?:jpe?g|png|webp|avif)(?:\?[^\s"'<>]*)?$/i.test(u)||/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(u)}
+function okImg(u){u=String(u||'');return /^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/[\w.\-]+\/o\/[^\s"'<>]+$/.test(u)||/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(u)}
 function pic(p,big){if(!p||!p.image||!okImg(p.image))return '';
 return '<button type="button" class="cm-pic'+(big?' big':'')+'" data-act="cm-zoom" data-arg="'+esc(p.id||'')+'" aria-label="View photo larger"><img src="'+esc(p.image)+'" alt="Photo shared with this post" loading="lazy" decoding="async"></button>'}
 function picUI(inline){var ph=CM.draft.photo,h='';
@@ -4632,18 +4630,16 @@ if(e&&e.message==='type'||c==='type')return 'Please choose a JPG, PNG, WebP or H
 if(c==='toobig')return 'That photo is too large. Please choose a photo under 15 MB.';
 if(c==='bad')return 'That photo couldn’t be read. Some phones save in a format the browser can’t open — try a screenshot or another photo.';
 return 'That photo couldn’t be used.'}
-function upErr(e){var c=String(e&&e.code||''),m=String(e&&e.message||'').trim();try{console.error('[Community upload]',c,m)}catch(x){}
-if(/storage\\/unauthorized|storage\\/unauthenticated/.test(c))return 'Photo upload was refused. Make sure you’re signed in.';
-if(/storage\\/bucket-not-found|storage\\/project-not-found|storage\\/no-default-bucket/.test(c))return 'Photo storage is not configured yet.';
-if(/storage\\/quota-exceeded/.test(c))return 'Photo storage is full right now. Please try again later.';
-if(/storage\\/retry-limit-exceeded|storage\\/canceled|network|unavailable/i.test(c)||/network error/i.test(m)||navigator.onLine===false)return 'The photo didn’t finish uploading. Please check your connection and try again.';
-if(/storage\\/invalid-argument|storage\\/server-file-wrong-size/.test(c))return 'The photo couldn’t be uploaded. Please choose it again.';
-if(/preset.*not found|unknown upload preset/i.test(m))return 'Cloudinary could not find the upload preset “scamsense_community”. Check its name and make sure it is set to Unsigned.';
-if(/unsigned.*disabled|not allowed.*unsigned/i.test(m))return 'Cloudinary is not allowing unsigned uploads. Set the scamsense_community preset to Unsigned.';
-if(/Invalid cloud name/i.test(m))return 'The photo upload account name is incorrect.';
-if(!c&&/Failed to fetch|dynamically imported|import|module/i.test(m))return 'We couldn’t reach the photo upload service. Check your connection and try again.';
-return 'Photo upload failed'+(m?': '+m.slice(0,180):c?' (Error: '+c.replace(/[^\\w\\/.-]/g,'').slice(0,60)+')':'.')+' Your post wasn’t published.'}
-function uploadPhoto(ph){return new Promise(function(ok,no){var x=new XMLHttpRequest(),fd=new FormData();fd.append('upload_preset','scamsense_community');fd.append('file',ph.blob,'community-photo.jpg');x.open('POST','https://api.cloudinary.com/v1_1/kv2o77gy/image/upload',true);x.timeout=90000;x.upload.onprogress=function(ev){var pc=ev.lengthComputable?Math.round(ev.loaded/ev.total*100):0;CM.upPct=pc;var el=document.getElementById('cm-up');if(el)el.textContent='Uploading photo… '+pc+'%'};x.onload=function(){var d={};try{d=JSON.parse(x.responseText||'{}')}catch(e){}if(x.status>=200&&x.status<300&&d.secure_url){CM.upPct=100;ok(d.secure_url)}else no(new Error(d.error&&d.error.message||'Cloudinary upload failed (HTTP '+x.status+').'))};x.onerror=function(){no(new Error('Network error during photo upload.'))};x.ontimeout=function(){no(new Error('Photo upload timed out. Try a smaller photo or better connection.'))};x.send(fd)})}
+function upErr(e){var c=String(e&&e.code||'');try{console.error('[Community upload]',c,e&&e.message)}catch(x){}
+if(/storage\/unauthorized|storage\/unauthenticated/.test(c))return 'Photo upload was refused. Make sure you’re signed in. (If you run this app, check that Firebase Storage rules allow signed-in users to upload to communityPhotos/.)';
+if(/storage\/bucket-not-found|storage\/project-not-found|storage\/no-default-bucket/.test(c))return 'Photo upload isn’t set up yet. (If you run this app, enable Firebase Storage in the Firebase console and check the storageBucket in the app config.)';
+if(/storage\/quota-exceeded/.test(c))return 'Photo storage is full right now. Please try again later.';
+if(/storage\/retry-limit-exceeded|storage\/canceled|network|unavailable/.test(c)||navigator.onLine===false)return 'The photo didn’t finish uploading. Please check your connection and try again. Your post wasn’t published.';
+if(/storage\/invalid-argument|storage\/server-file-wrong-size/.test(c))return 'The photo couldn’t be uploaded. Please choose it again.';
+if(!c&&/Failed to fetch|dynamically imported|import|module/i.test(String(e&&e.message||'')))return 'We couldn’t load the photo upload service. Please check your connection or any content blocker, then try again.';
+return 'The photo couldn’t be uploaded, so your post wasn’t published. Please try again.'+(c?' (Error: '+c.replace(/[^\w\/.-]/g,'').slice(0,60)+')':'')}
+function uploadPhoto(ph){return FirebaseAdapter.storage().then(function(f){var M=f.M,path='communityPhotos/'+uid()+'/'+Date.now().toString(36)+Math.random().toString(36).slice(2,8)+'.jpg',r=M.ref(f.st,path),t=M.uploadBytesResumable(r,ph.blob,{contentType:'image/jpeg',cacheControl:'public,max-age=31536000'});
+return new Promise(function(ok,no){t.on('state_changed',function(sn){var pc=sn.totalBytes?Math.round(sn.bytesTransferred/sn.totalBytes*100):0;CM.upPct=pc;var el=document.getElementById('cm-up');if(el)el.textContent='Uploading photo… '+pc+'%'},no,function(){M.getDownloadURL(t.snapshot.ref).then(ok,no)})})})}
 /* zoom viewer */
 function zoomOpen(id){var p=find(id)||(CM.post&&CM.post.id===id?CM.post:null);if(!p||!okImg(p.image))return;zoomClose();
 var e=document.createElement('div');e.id='cmzoom';e.setAttribute('role','dialog');e.setAttribute('aria-modal','true');e.setAttribute('aria-label','Photo viewer');
@@ -5155,9 +5151,8 @@ return box+sec('Recent Posts')+(CM.dState==='ok'?pcards(rec,'No posts yet. Be th
 $('#app').addEventListener('keydown',function(e){if(e.target&&e.target.id==='cm-dq'&&e.key==='Enter'){e.preventDefault();runSearch()}});
 $('#app').addEventListener('input',function(e){if(e.target&&e.target.id==='cm-dq')CM.dq=e.target.value});
 NEWNAMES.cm_feed='Home';NEWNAMES.cm_home='Home';NEWNAMES.cm_discover='Discover';
-/* Landing action runs inside the Community module, where go2 and loadFeed are in scope. */
-window.__ssOpenCommunityHome=function(){try{go2('cm_home');if(CM.feedState!=='loading')loadFeed();return true}catch(e){try{console.error('[Community start]',e)}catch(x){}return false}};
-try{window.__ssOpenCommunityHome()}catch(e){}
+/* first page = the community feed; the AI chatbot is its own page (AI Assistant in the nav, or the chat button in the header) */
+try{go2('cm_home');loadFeed()}catch(e){try{console.error('[Community start]',e)}catch(x){}}
 })()}catch(e){try{console.error('[Community]',e)}catch(x){}}
 </script>
 <script>
@@ -5830,21 +5825,6 @@ var m=document.getElementById('main');
 if(k!=='ai'&&m&&m.scrollTop>0){try{m.scrollTo({top:0,behavior:reduce()?'auto':'smooth'})}catch(x){m.scrollTop=0}}
 },true);
 })()}catch(e){try{console.error('[Navigation]',e)}catch(x){}}
-</script>
-<script>
-/* Final landing check calls the Community module's scoped navigation action. */
-(function(){
-  function start(){
-    if(typeof window.__ssOpenCommunityHome==='function'){
-      window.__ssOpenCommunityHome();
-      return;
-    }
-    setTimeout(start,200);
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
-  else start();
-  window.addEventListener('pageshow',start);
-})();
 </script>
 </body>
 </html>
