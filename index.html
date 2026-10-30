@@ -4160,6 +4160,8 @@ H.classList.remove('ss-boot');window.__ssBootDone=1;
 if(kind==='app'){if(w&&w.parentNode)w.parentNode.removeChild(w);window.__ssOpen()}else{H.classList.add('ss-go')}
 if(e)e.classList.add('out');
 try{window.dispatchEvent(new Event('ss-sync'))}catch(x){}
+/* Once authentication has selected the real app screen, open Community Home. The community module registers this action after the main chat module loads. */
+if(kind==='app'){try{if(typeof window.__ssOpenCommunityHome==='function')window.__ssOpenCommunityHome();else window.__ssCommunityLandingPending=true}catch(x){window.__ssCommunityLandingPending=true}}
 try{if(kind==='resume'&&B.resume)B.resume(B.user);else if(window.__ssPend){var f=window.__ssPend;window.__ssPend=null;f()}}catch(x){}
 if(e)setTimeout(function(){if(e.parentNode)e.parentNode.removeChild(e)},calm?300:850)}
 function go(){if(B.done)return;var k=decide();if(!k&&now()<LIMIT)return;reveal(k||(ret?'app':'login'))}
