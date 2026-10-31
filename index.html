@@ -2531,14 +2531,14 @@ return{demo:true,alias:alias||'',matches:out,count:imgs.length,ran:new Date()};
 }
 
 /* ---------- Image Authenticity demo (metadata scan only) ---------- */
-var AUTH_STEPS=['Reading the file','Looking at built-in details (metadata)','Checking for content credentials','Looking for editing-software marks','Putting the result together'];
-var COMMON_NOT=['Who is in the picture, or whether they own the account that used it.','Whether the person you’re talking to is honest.'];
+var AUTH_STEPS=['Reading the picture file','Looking for a few built-in text markers','Checking the file type and size','Preparing a file-details report'];
+var COMMON_NOT=['Who made the picture or who is shown in it.','Whether the person who sent it is honest.'];
 var AUTH_CATS={
-ai_strong:{label:'Strong signs of AI generation',color:'#EF4444',icon:'sparkles',summary:'The file carries marks that point to an AI image tool. That is a strong sign, not proof.',not:['That the person on the account made the picture, or knew it was AI.','That it was made to deceive. Many people share AI art openly.','That every part of the picture is AI-made.'],sample:['The file’s built-in details name an AI image tool.','Generation settings are stored in the file.','The picture size is common for AI image tools (weak hint).']},
-ai_edit:{label:'Possible AI editing',color:'#F59E0B',icon:'sparkles',summary:'Some marks suggest AI tools may have changed part of this picture.',not:['That the whole picture is AI-made.','That the changes were meant to mislead.','How much of the picture was changed.'],sample:['The file mentions an AI-assisted editing feature.','It also passed through photo editing software.']},
-conv:{label:'Signs of conventional editing',color:'#0EA5E9',icon:'flask',summary:'The file shows it passed through photo editing software.',not:['That the picture is fake or misleading. Most pictures are edited a little, like cropping or colour.','What was changed.'],sample:['The file names photo editing software.','Content credentials are present and show an editing step.']},
-none:{label:'No strong synthetic signals detected',color:'#10A37F',icon:'shield-check',summary:'The checks in this demo didn’t find strong signs of AI or editing.',not:['That the picture is real or untouched.','That a full AI detector would agree. This demo doesn’t run one.','That the picture hasn’t been used elsewhere.'],sample:['Camera-style details are stored in the file.','No AI or editing-software marks were found.']},
-unknown:{label:'Not enough information',color:'#64748B',icon:'help-circle',summary:'This file doesn’t carry enough built-in details to say much either way.',not:['That the picture is real.','That the picture is fake.'],sample:['No camera or editing details were found. This is common for screenshots and pictures saved from social apps.','The file is small or heavily compressed.']}
+ai_strong:{label:'AI-tool marker found',color:'#F59E0B',icon:'sparkles',summary:'The file contains text matching the name of an AI image tool. This marker can be added, changed, or removed.',not:['This does not prove the picture was made by AI.','It does not show who made or shared the picture.'],sample:['A text marker matching an AI image tool was found.','The marker has not been independently verified.']},
+ai_edit:{label:'Possible AI-editing marker found',color:'#F59E0B',icon:'sparkles',summary:'The file contains text that may refer to an AI editing feature. This is only a clue.',not:['This does not prove AI editing took place.','It does not show what was changed or why.'],sample:['A text marker matching an AI editing feature was found.','The marker has not been independently verified.']},
+conv:{label:'Editing-software marker found',color:'#0EA5E9',icon:'image',summary:'The file contains text matching photo-editing software. Many normal pictures are edited, so this does not mean the picture is fake.',not:['This does not prove the picture is misleading.','It does not show what was changed.'],sample:['A text marker matching photo-editing software was found.','The marker has not been independently verified.']},
+none:{label:'Camera or content marker found',color:'#10A37F',icon:'info',summary:'The file contains a basic camera or content-related marker. This does not prove the picture is genuine or untouched.',not:['This does not prove the picture is real.','It does not prove the picture has not been edited.'],sample:['A basic camera or content-related marker was found.','The marker has not been independently verified.']},
+unknown:{label:'No useful markers found',color:'#64748B',icon:'help-circle',summary:'This quick scan did not find the markers it knows about. Many apps remove file details when pictures are shared.',not:['This does not mean the picture is real.','This does not mean the picture is AI-generated.'],sample:['No recognised markers were found.','This is common with screenshots and images saved from social apps.']}
 };
 async function analyzeMeta(file,url){
 var buf=await file.arrayBuffer(),u=new Uint8Array(buf);
@@ -2547,21 +2547,20 @@ var txt=str(u.subarray(0,Math.min(u.length,300000)))+(u.length>300000?str(u.suba
 var low=txt.toLowerCase();
 function has(a){return a.filter(function(k){return low.indexOf(k)>-1})}
 var ai=has(['trainedalgorithmicmedia','midjourney','dall-e','stable diffusion','comfyui','automatic1111','novelai']);
-if(low.indexOf('sampler:')>-1&&low.indexOf('steps:')>-1)ai.push('generation settings');
+if(low.indexOf('sampler:')>-1&&low.indexOf('steps:')>-1)ai.push('generation settings text');
 var aiEdit=has(['compositewithtrainedalgorithmicmedia','generative fill','adobe firefly','firefly']);
 var conv=has(['photoshop','lightroom','gimp','snapseed','pixelmator','affinity photo','canva','picsart','facetune','meitu','capture one']);
 var c2pa=low.indexOf('c2pa')>-1||low.indexOf('jumbf')>-1;
-var exif=txt.indexOf('Exif\u0000\u0000')>-1;
+var exif=txt.indexOf('Exif\\u0000\\u0000')>-1;
 var dims=await new Promise(function(r){var im=new Image();im.onload=function(){r([im.naturalWidth,im.naturalHeight])};im.onerror=function(){r(null)};im.src=url});
 var found=[],cat;
-found.push('File: '+esc(file.type||'image')+', '+(file.size/1048576).toFixed(2)+' MB'+(dims?', '+dims[0]+'×'+dims[1]+' pixels':'')+'.');
-if(ai.length)found.push('The file’s built-in details mention an AI image tool or its settings ('+esc(ai.join(', '))+'). Anyone can add or remove these labels.');
-if(aiEdit.length)found.push('The file mentions an AI-assisted editing feature ('+esc(aiEdit.join(', '))+').');
-if(conv.length)found.push('The file names photo editing software ('+esc(conv.join(', '))+').');
-if(c2pa)found.push('Content credentials (C2PA) data is present. These record how a picture was made or edited, and can be removed.');
-if(exif)found.push('Camera-style metadata is present.');
-if(!exif&&!c2pa&&!ai.length&&!aiEdit.length&&!conv.length)found.push('No camera or editing details were found. Screenshots and pictures saved from social apps usually have them stripped.');
-if(dims&&dims[0]===dims[1]&&[512,768,1024,1536,2048].indexOf(dims[0])>-1)found.push('The size ('+dims[0]+'×'+dims[1]+') is common for some AI image tools. Many ordinary pictures are cropped square too, so this is a weak hint at most.');
+found.push('File type: '+esc(file.type||'not identified')+'. File size: '+(file.size/1048576).toFixed(2)+' MB'+(dims?', image size: '+dims[0]+' × '+dims[1]+' pixels':'')+'.');
+if(ai.length)found.push('Text matching an AI image-tool name was found ('+esc(ai.join(', '))+'). This scan cannot confirm whether the marker is genuine.');
+if(aiEdit.length)found.push('Text matching an AI-editing feature was found ('+esc(aiEdit.join(', '))+'). This scan cannot confirm whether the marker is genuine.');
+if(conv.length)found.push('Text matching photo-editing software was found ('+esc(conv.join(', '))+'). This does not show what edits were made.');
+if(c2pa)found.push('A text marker associated with C2PA/JUMBF was found. This demo does not validate content credentials or their signature.');
+if(exif)found.push('A basic EXIF marker was found. This does not confirm that the camera details are genuine.');
+if(!exif&&!c2pa&&!ai.length&&!aiEdit.length&&!conv.length)found.push('No recognised text markers were found. Image apps often remove these details when saving or sharing pictures.');
 if(ai.length)cat='ai_strong';else if(aiEdit.length)cat='ai_edit';else if(conv.length)cat='conv';else if(exif||c2pa)cat='none';else cat='unknown';
 return{cat:cat,found:found,name:file.name,at:new Date(),demo:true};
 }
@@ -2719,21 +2718,21 @@ return title('Trace results','Demo results')
 /* ----- Feature 3: Image Authenticity ----- */
 Views.auth=function(){
 var A=S.auth;
-if(A.stage==='run')return title('Analysing','Demo analysis in progress')+demoBox('Demo analysis. It reads this file’s built-in details on this device. No AI detector is connected.')+'<div style="height:14px"></div>'+stepsView(AUTH_STEPS,S.stepIdx||0);
+if(A.stage==='run')return title('Checking file details','Please wait')+demoBox('This quick check looks for a few text markers and basic file details. It does not run an AI-image detector.')+'<div style="height:14px"></div>'+stepsView(AUTH_STEPS,S.stepIdx||0);
 if(A.stage==='done'&&A.res)return authResult();
 var pick=A.img?'<div class="card" style="display:flex;gap:12px;align-items:center"><img src="'+A.img.url+'" alt="Picture to check" style="width:64px;height:64px;object-fit:cover;border-radius:12px"><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(A.img.file.name)+'</div><div class="rs">Image • '+(A.img.file.size/1048576).toFixed(1)+' MB</div></div><button class="ib" data-act="au-rm" aria-label="Remove picture" style="font-size:20px">'+I('x','aria-hidden="true"')+'</button></div>':'<button class="th add" data-act="au-add" style="width:100%;height:120px;margin:0 0 14px" aria-label="Choose a picture">'+I('upload','aria-hidden="true" style="font-size:28px"')+'<span>Choose a picture</span></button>';
-return vm()+title('Check picture authenticity','Look for signs that a picture may be AI-generated or edited.')+pick
-+'<div class="demo" style="margin:0 0 14px">'+I('flask','aria-hidden="true"')+' Demo analysis. It reads the file’s built-in details (metadata) on this device. A real AI-image detector isn’t connected.</div>'
-+Billing.panel('image')+prim('Run demo analysis','au-start',undefined,!A.img)
-+'<div class="rs" style="text-align:center">Your picture stays on this device in this prototype.</div>';
+return vm()+title('Image Authenticity','Check a picture for basic file details and possible AI or editing markers.')+pick
++'<div class="demo" style="margin:0 0 14px">'+I('info','aria-hidden="true"')+' This is a basic on-device file scan, not an AI-image detector. Markers can be missing or faked, so the result cannot tell you whether a picture is real or AI-generated.</div>'
++prim('Check file details','au-start',undefined,!A.img)
++'<div class="rs" style="text-align:center">Your picture is checked on this device. It is not uploaded for this demo.</div>';
 }
 function authResult(){
 var A=S.auth,R=A.res,key=A.preview||R.cat,C=AUTH_CATS[key],prev=!!A.preview;
 var found=prev?C.sample:R.found;
 var not=C.not.concat(COMMON_NOT);
 var others=Object.keys(AUTH_CATS).filter(function(k){return k!==key}).map(function(k){return '<button class="chip" data-act="au-prev" data-arg="'+k+'" style="height:auto;min-height:40px;padding:6px 14px;text-align:left">'+AUTH_CATS[k].label+'</button>'}).join('');
-return title('Authenticity result',prev?'Sample outcome':'Demo analysis')
-+(prev?demoBox('Sample outcome. This shows how this result would look. It is not about your picture.'):demoBox('Demo analysis of file details only. No AI detector was run. Treat this as a clue, not an answer.'))
+return title('File details report',prev?'Sample outcome':'On-device demo scan')
++(prev?demoBox('Sample outcome. This shows how this result would look. It is not about your picture.'):demoBox('This report only lists basic file markers. It is not an AI-image detection result and cannot confirm whether the picture is real or fake.'))
 +'<div style="height:12px"></div>'
 +'<div style="border:1px solid '+C.color+';background:#0E1A3C;border-radius:16px;padding:14px;margin:0 0 14px;display:flex;gap:12px;align-items:center"><span class="circ" style="background:'+C.color+'">'+I(C.icon,'aria-hidden="true"')+'</span><div><div style="font-size:18px;font-weight:600;line-height:1.3">'+C.label+'</div><div class="rs">'+C.summary+'</div></div></div>'
 +sect('What we found')+bullets(found.map(function(x){return prev?esc(x):x}))
@@ -2939,16 +2938,15 @@ attach(items);
 'au-rm':function(){S.auth.img=null;render()},
 'au-start':function(){
 var A=S.auth;if(!A.img)return;
-if(Billing.enabled&&Billing.bal.image===0){Billing.msg=Billing.err({code:'no-credits'},'image');render();return}
-A.key=Billing.uid();A.stage='run';A.res=null;A.preview=null;
-var p=Services.auth.analyze(A.img.file,A.img.url).catch(function(){return{cat:'unknown',found:['The file couldn’t be read for details.'],name:A.img.file.name,at:new Date(),demo:true,failed:true}});
-runSteps(AUTH_STEPS,700,function(){p.then(function(r){var ok=function(){A.res=r;A.stage='done';report('auth',r);go('auth')};if(!Billing.enabled||r.failed){ok();return}Billing.useImage(A.key).then(function(j){if(j&&j.balance!=null)Billing.bal.image=j.balance;ok()}).catch(function(e){A.stage='setup';Billing.msg=Billing.err(e,'image');go('auth')})})});
+A.stage='run';A.res=null;A.preview=null;
+var p=Services.auth.analyze(A.img.file,A.img.url).catch(function(){return{cat:'unknown',found:['The file could not be read. No reliable file details are available.'],name:A.img.file.name,at:new Date(),demo:true,failed:true}});
+runSteps(AUTH_STEPS,700,function(){p.then(function(r){A.res=r;A.stage='done';report('auth',r);go('auth')})});
 },
 'au-prev':function(k){S.auth.preview=k||null;render()},
 'au-reset':function(){S.auth={img:null,stage:'setup',res:null,preview:null};go('auth')},
 add_auth:function(){
 var A=S.auth;if(!A.res||!A.img)return;
-attach([mkItem('picture','user','Picture (for authenticity check)','',{imgUrl:A.img.url,hash:A.img.hash||('sz:'+A.img.file.size)}),mkItem('analysis','demo','Authenticity check (demo)',AUTH_CATS[A.res.cat].label+'. File-details scan only. Not proof either way.',{kind:'auth'})]);
+attach([mkItem('picture','user','Picture (for authenticity check)','',{imgUrl:A.img.url,hash:A.img.hash||('sz:'+A.img.file.size)}),mkItem('analysis','demo','Picture file-details scan (demo)',AUTH_CATS[A.res.cat].label+'. File-details scan only. Not proof either way.',{kind:'auth'})]);
 },
 /* --- Money Check --- */
 'money-open':function(){S.money={text:'',res:null};S.f['money.text']=S.moneyDraft||Concierge.facts().moneyText||'';S.moneyDraft='';go('money')},
