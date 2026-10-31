@@ -343,6 +343,55 @@ async function callOpenRouter(env, requestBody) {
   }
 }
 
+
+// Groq is the third text-only provider for ordinary chat. Images and investigations stay on Gemini.
+async function callGroq(env, requestBody) {
+  if (!env || !env.GROQ_API_KEY) return { ok: false };
+  const messages = [];
+  const systemParts = requestBody.systemInstruction && requestBody.systemInstruction.parts;
+  if (Array.isArray(systemParts)) {
+    const systemText = systemParts.map((p) => p && typeof p.text === "string" ? p.text : "").join("\n").trim();
+    if (systemText) messages.push({ role: "system", content: systemText });
+  }
+  for (const turn of (requestBody.contents || [])) {
+    const role = turn && turn.role === "model" ? "assistant" : "user";
+    const parts = Array.isArray(turn && turn.parts) ? turn.parts : [];
+    const content = parts.map((p) => p && typeof p.text === "string" ? p.text : "").filter(Boolean).join("\n");
+    if (content) messages.push({ role, content });
+  }
+  if (!messages.length) return { ok: false };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + env.GROQ_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-oss-20b",
+        messages,
+        max_tokens: CHAT_MAX_OUTPUT_TOKENS,
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      console.error("Groq chat fallback HTTP", res.status);
+      return { ok: false };
+    }
+    const data = await res.json();
+    const content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+    const reply = typeof content === "string" ? content.trim() : "";
+    return reply ? { ok: true, reply } : { ok: false };
+  } catch (e) {
+    console.error("Groq chat fallback", e && e.name === "AbortError" ? "timeout" : "network error");
+    return { ok: false };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function extractReply(data) {
   const parts = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
   if (!Array.isArray(parts)) return "";
@@ -404,6 +453,11 @@ async function handleChat(request, env, origin) {
     if (backup.ok) {
       console.log("OpenRouter chat fallback succeeded");
       return json({ reply: backup.reply }, 200, origin);
+    }
+    const tertiary = await callGroq(env, requestBody);
+    if (tertiary.ok) {
+      console.log("Groq chat fallback succeeded");
+      return json({ reply: tertiary.reply }, 200, origin);
     }
     return g.response;
   }
