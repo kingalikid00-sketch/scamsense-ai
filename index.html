@@ -1236,7 +1236,7 @@ var h='<div class="saved-screen">'+title('Saved Scans','Your saved investigation
 var current=S.cur&&S.cur.msgs&&S.cur.msgs.length;
 h+='<button class="btn" data-act="saved-current" style="width:100%;margin:0 0 16px;background:#2563EB;color:#fff" '+(!current?'disabled':'')+'>Save current investigation</button>';
 if(!list.length)return h+'<div style="text-align:center;padding:28px 12px;color:#8FA0C8"><div style="font-size:18px;color:#EAF0FF;font-weight:600;margin-bottom:6px">Nothing saved yet</div>Your saved investigations will appear here.</div></div>';
-return h+list.slice().reverse().map(function(x){return '<div class="row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><button data-act="saved-view" data-arg="'+esc(x.id)+'" style="flex:1;text-align:left;background:none;border:0;color:inherit;font:inherit;min-width:0"><span class="rt">'+esc(x.title)+'</span><div class="rs">'+esc(x.date)+' · '+x.count+' messages</div></button><button class="ib" data-act="saved-delete" data-arg="'+esc(x.id)+'" aria-label="Delete saved scan">'+I('trash','')+'</button></div>'}).join('')
+return h+list.slice().reverse().map(function(x){return '<div class="row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><button data-act="saved-view" data-arg="'+esc(x.id)+'" style="flex:1;text-align:left;background:none;border:0;color:inherit;font:inherit;min-width:0"><span class="rt">'+esc(x.title)+'</span><div class="rs">'+esc(x.date)+' · '+x.count+' messages</div></button><button class="ib" data-act="saved-delete" data-arg="'+esc(x.id)+'" aria-label="Delete saved scan">'+I('trash','')+'</button></div>'}).join('')+'</div>'
 },
 settings:function(){
 var n=localStorage.getItem(settingsKey('notifications'))!=='off',t=curTheme();
