@@ -1242,7 +1242,7 @@ settings:function(){
 var n=localStorage.getItem(settingsKey('notifications'))!=='off',t=curTheme();
 return '<div class="settings-screen">'+title('Settings','Make ScamSense feel right for you.')
 +'<div class="row setting-row"><span style="flex:1"><span class="rt">Appearance</span><div class="rs">Change how ScamSense looks.</div></span><button class="ss-switch" type="button" data-theme-toggle aria-label="Toggle appearance" aria-pressed="'+(t==='light')+'"><i></i></button></div>'
-+'<button class="row setting-row" data-act="settings-notifications"><span style="flex:1"><span class="rt">Notifications</span><div class="rs">Choose whether notifications are enabled.</div></span><span class="ss-switch'+(n?' active':'')+'" aria-hidden="true"><i></i></span></button>'
++'<button class="row setting-row" type="button" data-act="settings-notifications" aria-pressed="'+n+'"><span style="flex:1"><span class="rt">Notifications</span><div class="rs">Choose whether notifications are enabled.</div></span><span class="ss-switch'+(n?' active':'')+'" aria-hidden="true"><i></i></span></button>'
 +'<div class="row"><span><span class="rt">Privacy</span><div class="rs">Saved scans stay on this device and are not shared publicly.</div></span></div>'
 +'<button class="row" data-act="settings-clear-saved"><span style="flex:1"><span class="rt">Delete all saved scans</span><div class="rs">Delete your saved investigation copies.</div></span></button>'
 +'<div style="color:var(--cm-mute,#8FA0C8);font-size:13px;padding:14px 4px">ScamSense AI · These preferences are saved on this device. Notification control is a preference; push alerts are not active yet.</div></div>'
@@ -2758,13 +2758,16 @@ var THEME_KEY='scamsense-theme';
 function curTheme(){return document.documentElement.getAttribute('data-theme')==='light'?'light':'dark'}
 function setTheme(t){t=t==='light'?'light':'dark';document.documentElement.setAttribute('data-theme',t);try{document.querySelector('meta[name=theme-color]').setAttribute('content',t==='light'?'#FFFFFF':'#050B1E')}catch(e){}try{localStorage.setItem(THEME_KEY,t)}catch(e){}}
 var _menu2=Views.menu;
-Views.menu=function(){
-var h=_menu2(),t=curTheme();
-var ctl='<div class="thm"><div class="rt">Appearance</div><div class="seg" role="group" aria-label="Theme"><button data-theme-set="dark" aria-pressed="'+(t==='dark')+'" class="'+(t==='dark'?'on':'')+'">Dark</button><button data-theme-set="light" aria-pressed="'+(t==='light')+'" class="'+(t==='light'?'on':'')+'">Light</button></div></div>';
-var k='<div style="background:linear-gradient(135deg,#0F2A66,#3A1E86)';
-var i=h.indexOf(k);
-return i>-1?h.slice(0,i)+ctl+h.slice(i):h+ctl};
+/* Keep the menu clean: appearance is controlled only by the switch in Settings. */
+Views.menu=function(){return _menu2()};
 $('#app').addEventListener('click',function(e){
+var toggle=e.target.closest('[data-theme-toggle]');
+if(toggle){
+var next=curTheme()==='dark'?'light':'dark';
+setTheme(next);
+toggle.setAttribute('aria-pressed',next==='light'?'true':'false');
+return;
+}
 var b=e.target.closest('[data-theme-set]');if(!b)return;
 setTheme(b.getAttribute('data-theme-set'));
 var bs=b.parentNode.querySelectorAll('[data-theme-set]');
