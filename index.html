@@ -5590,3 +5590,236 @@ if(p===undefined)p=k;
 for(var i=p;i<k;i++)kids[i].classList.add('msg-in');
 seen.set(S.cur,k)}catch(x){}};
 })()}catch(e){}
+</script>
+<script>
+/* ===================== SIGN-IN + GUIDED REGISTRATION =====================
+   Uses the existing ScamSenseAuth (Firebase) for every sign-in. Public profile = ScamSenseAuth.profile.claim (name + username only).
+   Private extras (age range, photo, interests) are saved to users/{uid}/settings/onboarding and are never shown to other people. */
+try{(function(){
+var A=ScamSenseAuth,P=A.profile,KEY='scamsense-reg:',NOTSET='Account sign-in is being set up. For now, you can continue without an account.';
+var AGES=['Under 18','18 to 29','30 to 49','50 to 64','65 or older','Prefer not to say'];
+var GOALS=[['messages','Suspicious messages and texts','h-msg'],['websites','Websites and online shopping','h-link'],['people','People I meet online','h-person'],['money','Payments and investments','money-open']];
+var GSVG='<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.1 5.3-4.5 6.9l7.3 5.7c4.3-4 6.9-9.9 6.9-17.1z"/><path fill="#FBBC05" d="M10.5 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.3-5.7c-2 1.4-4.7 2.3-8.6 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>';
+var BACK='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
+var USER='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>';
+function fresh(){return{active:false,step:1,dir:1,email:'',name:'',user:'',age:'',photo:'',goals:[],claimed:false,busy:false,privFail:false,seq:0,t:0,done:0}}
+var R=fresh(),lb=false;
+/* Close the on-screen keyboard (sign-in / registration only) when the person is done typing */
+function offKb(){var a=document.activeElement;if(a&&a.closest&&a.closest('#ss-welcome')&&/^(INPUT|TEXTAREA)$/.test(a.tagName)){try{a.blur()}catch(e){}}}
+/* Full-screen loading animation shown while an account is being created / signed in. Never shows plain text only: logo with spinning ring, pulse, moving bar. */
+var L=(function(){var el=null,t0=0,safety=0,slow=0,src='';
+function logo(){var a=document.getElementById('ssw-logo')||document.querySelector('#ss-splash img');var u=a&&a.getAttribute('src');if(u)src=u;return src}
+function build(){var d=document.createElement('div');d.id='ssload';d.setAttribute('role','status');d.setAttribute('aria-live','polite');
+d.innerHTML='<div class="sl-c"><div class="sl-lg"><span class="sl-pulse"></span><span class="sl-pulse b"></span><span class="sl-ring"></span>'+(logo()?'<img src="'+src+'" alt="" width="64" height="64">':'')+'</div><div class="sl-t" id="sl-t"></div><div class="sl-bar"><i></i></div></div>';return d}
+function txt(m){var t=document.getElementById('sl-t');if(!t||t.textContent===m)return;t.classList.remove('in');t.textContent=m;void t.offsetWidth;t.classList.add('in')}
+function show(m){offKb();clearTimeout(safety);clearTimeout(slow);
+if(!el||!el.parentNode){el=build();document.body.appendChild(el)}
+el.classList.remove('off');void el.offsetWidth;el.classList.add('on');t0=Date.now();txt(m||'Please wait');
+slow=setTimeout(function(){txt('Still working… this can take a moment on a slow connection')},7000);
+safety=setTimeout(hide,60000)}
+function set(m){if(el&&el.classList.contains('on'))txt(m)}
+function hide(){clearTimeout(safety);clearTimeout(slow);if(!el||!el.classList.contains('on'))return;var wait=Math.max(0,450-(Date.now()-t0));
+setTimeout(function(){if(!el)return;el.classList.remove('on');el.classList.add('off');var e=el;setTimeout(function(){if(e&&!e.classList.contains('on')&&e.parentNode)e.parentNode.removeChild(e);if(el===e)el=null},260)},wait)}
+return{show:show,set:set,hide:hide}})();
+function g(i){return document.getElementById(i)}
+function val(i){var e=g(i);return e?e.value:''}
+function ov(){return g('ss-welcome')}
+function box(){return g('ssr')}
+function note(t){var n=g('ssw-note');if(n)n.textContent=t}
+function err(t){var e=g('r-err');if(e)e.textContent=t||''}
+function hp(id,t,k){var e=g(id);if(!e)return;e.textContent=t||'';e.className='rg-hp'+(k>0?' ok':k<0?' bad':'')}
+function setBusy(on,txt){R.busy=on;var b=box()&&box().querySelector('.rg-go');if(!b)return;if(on){b.dataset.t=b.textContent;b.textContent=txt||'Please wait…';b.disabled=true;b.classList.add('ld')}else{if(b.dataset.t)b.textContent=b.dataset.t;b.disabled=false;b.classList.remove('ld')}}
+/* ---------- screens ---------- */
+function hd(n){var s='';for(var i=1;i<=4;i++)s+='<i'+(i<=n?' class="on"':'')+'></i>';
+return '<div class="rg-top"><button type="button" class="rg-back" data-r="back" aria-label="Go back"'+(n===2||n===4?' style="visibility:hidden" tabindex="-1"':'')+'>'+BACK+'</button><div class="rg-prog" role="img" aria-label="Step '+n+' of 4">'+s+'</div><span class="rg-st">Step '+n+' of 4</span></div>'}
+function avIn(){return R.photo?'<img src="'+R.photo+'" alt="Your profile photo">':USER}
+/* ---------- first-time welcome (shown once, only right after a NEW account is created) ---------- */
+var WKEY='scamsense-welcomed:';
+function wDone(id){try{return localStorage.getItem(WKEY+id)==='1'}catch(e){return false}}
+function isNewNow(){var u=A.user;return !!(u&&A._nw===u.uid)}
+/* Firebase says an account is new when it was created at the moment of this sign-in. Email sign-ups are marked directly in the Create account step. */
+function noteNew(){var u=A.user;if(!u||A._nw===u.uid||A._nc===u.uid)return;A._nc=u.uid;
+A.adapter.load(A.config).then(function(f){var c=f.auth.currentUser;if(!c||c.uid!==u.uid)return;var m=c.metadata||{},t=Date.parse(m.creationTime||'');
+if((m.creationTime&&m.creationTime===m.lastSignInTime)||(t&&Math.abs(Date.now()-t)<600000))A._nw=u.uid}).catch(function(){})}
+function firstName(){var n=(R.name||'').trim();if(!n&&A.user&&A.user.name)n=String(A.user.name).trim();return n.split(/\s+/)[0]||''}
+function wel(){var u=A.user;R.wel=!!(u&&isNewNow()&&!wDone(u.uid)&&!(A.priv&&A.priv.welcomed));return R.wel}
+/* remembers "welcome seen": on this phone, and as one small field inside the existing private settings document users/{uid}/settings/onboarding (no new collection, no new profile) */
+function markWelcomed(){var u=A.user;if(!u)return;var id=u.uid;try{localStorage.setItem(WKEY+id,'1')}catch(e){}if(A.priv)A.priv.welcomed=true;
+A.adapter.cloud().then(function(f){return f.F.setDoc(f.F.doc(f.db,'users',id,'settings','onboarding'),{welcomed:true},{merge:true})}).catch(function(){})}
+function WELCOME(){var n=firstName(),lg=g('ssw-logo'),src=lg&&lg.getAttribute('src');
+return '<div class="rg-done" style="display:flex;flex-direction:column;align-items:center">'
++(src?'<img src="'+esc(src)+'" alt="" width="84" height="84" style="width:84px;height:84px;margin:0 0 18px;border-radius:22px;box-shadow:0 0 0 8px rgba(37,99,235,.14),0 10px 30px rgba(37,99,235,.28)">':'<svg class="rg-ok" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28"/><path d="M20 33l8 8 16-17"/></svg>')
++'<h2 class="rg-h" tabindex="-1" style="margin-bottom:12px">Welcome to ScamSense AI! 🎉</h2>'
++(n?'<p class="rg-p" style="margin-bottom:14px;font-weight:600;color:#EAF0FF">We’re glad you’re here, '+esc(n)+'.</p>':'')
++'<p class="rg-p" style="margin-bottom:14px">Your personal AI assistant is ready to help you check suspicious messages, profiles, links, and online offers before you trust them.</p>'
++'<p class="rg-p" style="margin-bottom:30px">Let’s help you stay safer online.</p>'
++'<button type="button" class="rg-go" data-r="done" style="width:100%">Let’s Get Started</button></div>'}
+var V={
+1:function(){return hd(1)+'<h2 class="rg-h" tabindex="-1">Create your account</h2><p class="rg-p">Choose how you’d like to sign up. It takes about a minute.</p>'
++'<button type="button" class="gg" data-r="google">'+GSVG+'Continue with Google</button><div class="rg-or"><span>or use your email</span></div>'
++'<div class="rg-f"><label class="rg-l" for="r-em">Email address</label><input id="r-em" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" value="'+esc(R.email)+'"></div>'
++'<div class="rg-f"><label class="rg-l" for="r-pw">Password</label><div class="rg-pw"><input id="r-pw" type="password" autocomplete="new-password" aria-describedby="r-pwh"><button type="button" class="rg-show" data-r="show" aria-pressed="false">Show</button></div><div class="rg-hp" id="r-pwh">At least 6 characters.</div></div>'
++'<div class="rg-err" id="r-err" role="alert"></div><button type="button" class="rg-go" data-r="create">Create account</button><button type="button" class="rg-tx" data-r="tologin">I already have an account</button>'
++'<p class="rg-fn">Google sign-in opens Google’s own secure window. ScamSense never sees your Google password.</p>'},
+2:function(){var d=R.claimed?' disabled':'';return hd(2)+'<h2 class="rg-h" tabindex="-1">A little about you</h2><p class="rg-p">Your name and username are shown in the community. Your email never is.</p>'
++'<div class="rg-f"><label class="rg-l" for="r-fn">Your name</label><input id="r-fn" type="text" maxlength="50" autocomplete="name" value="'+esc(R.name)+'"'+d+'><div class="rg-hp" id="r-fnh"></div></div>'
++'<div class="rg-f"><label class="rg-l" for="r-un">Username</label><input id="r-un" type="text" maxlength="15" autocomplete="username" autocapitalize="none" spellcheck="false" value="'+esc(R.user)+'"'+d+'><div class="rg-hp" id="r-unh">'+(R.claimed?'Your name and username are saved.':'3 to 15 letters, numbers or _')+'</div></div>'
++'<div class="rg-f"><span class="rg-l" id="r-agl">Age range <em>(optional)</em></span><div class="rg-ch" role="radiogroup" aria-labelledby="r-agl">'+AGES.map(function(a){return '<button type="button" class="rg-c" role="radio" aria-checked="'+(R.age===a)+'" data-r="age" data-v="'+a+'">'+a+'</button>'}).join('')+'</div><div class="rg-hp">We only keep a range, never your birthday. It helps ScamSense give clearer tips.</div></div>'
++'<div class="rg-f"><span class="rg-l">Profile photo <em>(optional)</em></span><div class="rg-ph"><span class="rg-av" id="r-av">'+avIn()+'</span><div><button type="button" class="rg-c" data-r="photo">'+(R.photo?'Change photo':'Add a photo')+'</button>'+(R.photo?'<button type="button" class="rg-c" data-r="nophoto">Remove</button>':'')+'</div></div><div class="rg-hp" id="r-phh">Saved privately to your account. It isn’t shown to other people.</div></div><input type="file" id="r-file" accept="image/*" hidden>'
++'<div class="rg-err" id="r-err" role="alert"></div><button type="button" class="rg-go" data-r="next2">Continue</button><button type="button" class="rg-tx" data-r="later">Do this later</button>'},
+3:function(){return hd(3)+'<h2 class="rg-h" tabindex="-1">What would you like help with?</h2><p class="rg-p">Optional. ScamSense will show these first in the AI Assistant. You can pick more than one, or skip.</p>'
++GOALS.map(function(x){return '<button type="button" class="rg-c blk" aria-pressed="'+(R.goals.indexOf(x[0])>=0)+'" data-r="goal" data-v="'+x[0]+'">'+x[1]+'</button>'}).join('')
++'<div class="rg-hp'+(R.privFail?' bad':'')+'" id="r-p3">'+(R.privFail?'We couldn’t save your age range or photo yet. We’ll try again when you finish.':'')+'</div><div class="rg-err" id="r-err" role="alert"></div><button type="button" class="rg-go" data-r="fin3">Finish</button><button type="button" class="rg-tx" data-r="skip3">Skip for now</button>'},
+4:function(){if(wel())return WELCOME();var n=(R.name||'').trim().split(/\s+/)[0]||'';return '<div class="rg-done" style="display:flex;flex-direction:column;align-items:center"><svg class="rg-ok" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28"/><path d="M20 33l8 8 16-17"/></svg><h2 class="rg-h" tabindex="-1">You’re all set'+(n?', '+esc(n):'')+'</h2><p class="rg-p" style="margin-bottom:'+(R.privFail?'12':'24')+'px">Taking you into ScamSense…</p>'+(R.privFail?'<p class="rg-p" role="status" style="font-size:15px">Your name and username are saved. Some optional details couldn’t be saved. You can add them later.</p>':'')+'<button type="button" class="rg-go" data-r="done" style="width:100%">Start using ScamSense</button></div>'}
+};
+function draw(step,dir){L.hide();offKb();R.step=step;R.dir=dir||1;try{if(step<4)noteNew()}catch(e){}var b=box();if(!b)return;b.style.setProperty('--rd',R.dir);b.innerHTML='<div class="rp">'+V[step]()+'</div>';var h=b.querySelector('.rg-h');if(h)try{h.focus({preventScroll:true})}catch(e){}var o=ov();if(o)o.scrollTop=0}
+function show(step,dir){if(!window.__ssBootDone){window.__ssPend=function(){show(step,dir)};return}var w=ov();if(!w||w.classList.contains('out')){A.showWelcome();w=ov()}if(!w)return;w.style.visibility='';var l=g('ssw-login');if(l)l.hidden=true;var b=box();if(!b)return;b.hidden=false;R.active=true;window.__ssReg=true;draw(step,dir)}
+function showLogin(){offKb();var b=box(),l=g('ssw-login');if(b)b.hidden=true;if(l){l.classList.add('nr');l.hidden=false;l.classList.remove('rp');void l.offsetWidth;l.classList.add('rp')}R.active=false;if(!A.user)window.__ssReg=false}
+function finishApp(){L.hide();clearTimeout(R.done);try{window.__ssOpen&&window.__ssOpen()}catch(e){}try{A._hint&&A._hint(true)}catch(e){}var w=ov();if(w){w.classList.add('out');setTimeout(function(){if(w.parentNode)w.parentNode.removeChild(w)},320)}R.active=false;if(A.user)loadPriv(A.user.uid)}
+/* ---------- Firestore (private extras) ---------- */
+function savePriv(){var u=A.user;if(!u)return Promise.reject(new Error('signin'));
+return A.adapter.cloud().then(function(f){return f.F.setDoc(f.F.doc(f.db,'users',u.uid,'settings','onboarding'),{v:1,ageRange:R.age||'',goals:R.goals.slice(),photo:R.photo||'',updatedAt:f.F.serverTimestamp()},{merge:true})})}
+function loadPriv(uid){A.adapter.cloud().then(function(f){return f.F.getDoc(f.F.doc(f.db,'users',uid,'settings','onboarding'))}).then(function(d){if(!A.user||A.user.uid!==uid)return;A.priv=d.exists()?d.data():{};try{if(S.view==='account'||(S.view==='chat'&&!S.cur.msgs.length))render()}catch(e){}}).catch(function(){})}
+function pok(id){try{localStorage.setItem('scamsense-pok:'+id,'1')}catch(e){}}
+function keyOn(id,v){try{if(v)localStorage.setItem(KEY+id,v);else localStorage.removeItem(KEY+id)}catch(e){}}
+/* ---------- after a sign-in: finished profile -> straight into the app, otherwise registration continues ---------- */
+function after(user,fromWizard){var id=user&&user.uid;L.set('Setting up your account…');
+P.get(id).then(function(d){if(d){A.me={username:d.username,name:d.name};pok(id);finishApp();return}R.name=R.name||user.name||'';show(2,1)}).catch(function(){if(fromWizard){R.name=R.name||user.name||'';show(2,1)}else finishApp()})}
+function doLogin(kind){if(lb)return;if(!A.isConfigured()){note(NOTSET);return}var data;
+if(kind==='email'){var em=val('ssw-em').trim(),pw=val('ssw-pw');if(em.indexOf('@')<1){note(A.friendly('auth/invalid-email'));return}if(!pw){note('Please type your password.');return}data={email:em,password:pw,create:false}}
+lb=true;note('');L.show(kind==='google'?'Connecting to Google…':'Signing you in…');A.start(kind,data).then(function(r){lb=false;var p=g('ssw-pw');if(p)p.value='';if(!r.ok){L.hide();note(r.reason==='not-configured'?NOTSET:A.friendly(r.code));return}after(r.user,false)})}
+/* ---------- clicks ---------- */
+var ACT={
+start:function(){show(1,1)},tologin:function(){showLogin()},
+back:function(){if(R.step===1)showLogin();else if(R.step===3)draw(2,-1)},
+show:function(b){var i=g('r-pw');if(!i)return;var on=i.type==='password';i.type=on?'text':'password';b.textContent=on?'Hide':'Show';b.setAttribute('aria-pressed',String(on))},
+google:function(){if(R.busy)return;if(!A.isConfigured()){err(NOTSET);return}err('');R.busy=true;L.show('Connecting to Google…');A.start('google').then(function(r){R.busy=false;if(!r.ok){L.hide();err(r.reason==='not-configured'?NOTSET:A.friendly(r.code));return}after(r.user,true)})},
+create:function(){if(R.busy)return;var em=val('r-em').trim(),pw=val('r-pw');R.email=em;
+if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){err(A.friendly('auth/invalid-email'));g('r-em').focus();return}
+if(pw.length<6){err(A.friendly('auth/weak-password'));g('r-pw').focus();return}
+if(!A.isConfigured()){err(NOTSET);return}err('');setBusy(true,'Creating account…');L.show('Creating your account…');
+A.start('email',{email:em,password:pw,create:true}).then(function(r){setBusy(false);var p=g('r-pw');if(p)p.value='';if(!r.ok){L.hide();err(r.reason==='not-configured'?NOTSET:A.friendly(r.code));return}try{if(r.user)A._nw=r.user.uid}catch(e){}draw(2,1)})},
+age:function(b){var v=b.getAttribute('data-v');R.age=R.age===v?'':v;var all=box().querySelectorAll('[data-r=age]');for(var i=0;i<all.length;i++)all[i].setAttribute('aria-checked',String(all[i].getAttribute('data-v')===R.age))},
+photo:function(){var f=g('r-file');if(f)f.click()},
+nophoto:function(){R.photo='';draw(2,0)},
+goal:function(b){var v=b.getAttribute('data-v'),i=R.goals.indexOf(v);if(i>=0)R.goals.splice(i,1);else R.goals.push(v);b.setAttribute('aria-pressed',String(i<0))},
+later:function(){if(A.user&&isNewNow()&&wel()){draw(4,1);return}finishApp()},
+next2:function(){if(R.busy)return;var u=A.user;if(!u){err('Please sign in again to continue.');return}err('');
+var after2=function(){savePriv().then(function(){R.privFail=false},function(){R.privFail=!!(R.age||R.photo)}).then(function(){keyOn(u.uid,'3');setBusy(false);draw(3,1)})};
+if(R.claimed){setBusy(true,'Saving…');after2();return}
+var fn=R.name.trim(),un=P.clean(R.user);
+if(!P.okName(fn)){hp('r-fnh','Please enter your name (2 to 50 characters, no email or phone number).',-1);g('r-fn').focus();return}hp('r-fnh','');
+if(!P.okUser(un)){hp('r-unh','Username: 3 to 15 letters, numbers or _, not only numbers, and not a reserved word.',-1);g('r-un').focus();return}
+setBusy(true,'Saving…');
+P.get(u.uid).then(function(d){if(d){R.claimed=true;R.name=d.name||fn;R.user=d.username||un;return}
+return P.taken(un).then(function(t){if(t)throw{code:'taken'};return P.claim(u.uid,fn,un)}).then(function(){R.claimed=true;pok(u.uid);
+try{A.adapter.load(A.config).then(function(f){return f.A.updateProfile(f.auth.currentUser,{displayName:fn})}).catch(function(){})}catch(e){}
+try{if(window.cmAuth)window.cmAuth(A.user)}catch(e){}})})
+.then(after2).catch(function(e){setBusy(false);if(e&&e.code==='taken')hp('r-unh','That username is taken. Please try another.',-1);else err('We couldn’t save your profile. Please check your connection and try again.')})},
+fin3:function(){if(R.busy)return;var u=A.user;if(!u)return;err('');
+if(!(R.age||R.photo||R.goals.length)){keyOn(u.uid,'');R.privFail=false;draw(4,1);auto();return}
+setBusy(true,'Saving…');savePriv().then(function(){R.privFail=false;A.priv={ageRange:R.age,goals:R.goals.slice(),photo:R.photo};keyOn(u.uid,'');setBusy(false);draw(4,1);auto()},function(){setBusy(false);err('We couldn’t save your choices. Please check your connection and try again, or skip for now.')})},
+skip3:function(){var u=A.user;if(u)keyOn(u.uid,'');R.privFail=!!(R.age||R.photo||R.goals.length);draw(4,1);auto()},
+done:function(){if(R.wel){R.wel=false;markWelcomed()}finishApp()}
+};
+function auto(){clearTimeout(R.done);if(R.wel)return;R.done=setTimeout(finishApp,R.privFail?4200:2000)}
+document.addEventListener('click',function(e){var t=e.target&&e.target.closest?e.target.closest('button'):null;if(!t||!t.closest('#ss-welcome'))return;
+var r=t.getAttribute('data-r'),w=t.getAttribute('data-w');
+if(r&&ACT[r]){e.preventDefault();ACT[r](t);return}
+if(w==='google'||w==='signin'){e.stopPropagation();doLogin(w==='google'?'google':'email')}},true);
+document.addEventListener('pointerdown',function(e){var t=e.target;if(!t||!t.closest||!t.closest('#ss-welcome')||t.closest('input,textarea,select,label,button,a'))return;offKb()},true);
+(function(){var y0=null;document.addEventListener('touchstart',function(e){var t=e.target;y0=(t&&t.closest&&t.closest('#ss-welcome')&&!t.closest('input,textarea'))&&e.touches[0]?e.touches[0].clientY:null},{passive:true,capture:true});
+document.addEventListener('touchmove',function(e){if(y0===null||!e.touches[0])return;if(Math.abs(e.touches[0].clientY-y0)>14){y0=null;offKb()}},{passive:true,capture:true})})();
+document.addEventListener('keydown',function(e){if(e.key!=='Enter'||!e.target||!e.target.id)return;var m={'ssw-pw':'[data-w=signin]','ssw-em':'[data-w=signin]','r-pw':'[data-r=create]','r-em':'[data-r=create]','r-un':'[data-r=next2]'}[e.target.id];if(!m){if(e.target.tagName==='INPUT'&&e.target.closest&&e.target.closest('#ss-welcome')){e.preventDefault();offKb()}return}var b=ov()&&ov().querySelector(m);if(b){e.preventDefault();b.click()}});
+document.addEventListener('input',function(e){var t=e.target;if(!t||!t.id)return;
+if(t.id==='r-em')R.email=t.value;
+else if(t.id==='r-fn'){R.name=t.value;hp('r-fnh','')}
+else if(t.id==='r-un'){R.user=t.value;clearTimeout(R.t);var v=P.clean(t.value);
+if(!v){hp('r-unh','3 to 15 letters, numbers or _');return}
+if(!P.okUser(v)){hp('r-unh','3 to 15 letters, numbers or _, not only numbers.',-1);return}
+hp('r-unh','Checking…');var n=++R.seq;R.t=setTimeout(function(){P.taken(v).then(function(x){if(n===R.seq)hp('r-unh',x?'That username is taken.':'Available.',x?-1:1)}).catch(function(){if(n===R.seq)hp('r-unh','')})},400)}});
+document.addEventListener('change',function(e){var t=e.target;if(!t||t.id!=='r-file'||!t.files||!t.files[0])return;var f=t.files[0];t.value='';
+if(f.type.indexOf('image/')!==0||f.size>15*1048576){hp('r-phh','Please choose a photo (a picture file under 15 MB).',-1);return}
+var url=URL.createObjectURL(f),im=new Image();
+im.onload=function(){try{var s=Math.min(im.width,im.height),c=document.createElement('canvas');c.width=c.height=192;c.getContext('2d').drawImage(im,(im.width-s)/2,(im.height-s)/2,s,s,0,0,192,192);R.photo=c.toDataURL('image/jpeg',.82);URL.revokeObjectURL(url);draw(2,0)}catch(x){hp('r-phh','That photo couldn’t be used. Please try another.',-1)}};
+im.onerror=function(){URL.revokeObjectURL(url);hp('r-phh','That photo couldn’t be read. Please try another.',-1)};im.src=url});
+/* ---------- keyboard: keep the screen the size of what is visible and the field in view ---------- */
+var vv=window.visualViewport;function fit(){if(vv&&ov())document.documentElement.style.setProperty('--vvh',vv.height+'px')}
+if(vv){vv.addEventListener('resize',fit);vv.addEventListener('scroll',fit)}
+document.addEventListener('focusin',function(e){var t=e.target;if(t&&t.closest&&t.closest('#ss-welcome')&&t.tagName==='INPUT')setTimeout(function(){fit();try{t.scrollIntoView({block:'center',behavior:'smooth'})}catch(x){}},280)});
+/* ---------- startup gate: is this signed-in user's profile finished? (asked before anything is shown) ---------- */
+var B=window.__ssB;
+if(B){B.checkProfile=function(u){var id=u.uid,k='',f='';try{k=localStorage.getItem(KEY+id);f=localStorage.getItem('scamsense-pok:'+id)}catch(e){}
+if(f==='1'&&k!=='3'){B.prof='ok';if(B.kick)B.kick();return}
+P.get(id).then(function(d){B.pd=d;B.prof=!d?'none':(k==='3'?'step3':'ok');if(d)pok(id);if(B.kick)B.kick()}).catch(function(){B.prof='err';if(B.kick)B.kick()})};
+B.resume=function(u){var l=g('ssw-login');if(l)l.hidden=true;window.__ssReg=true;
+if(B.prof==='step3'){R.claimed=true;R.name=B.pd&&B.pd.name||'';R.user=B.pd&&B.pd.username||'';show(3,1)}else{R.name=R.name||u&&u.name||'';show(2,1)}};
+if(B.pend){var _u=B.pend;B.pend=null;B.checkProfile(_u)}}
+/* ---------- returning users: continue from where they stopped ---------- */
+function resume(u){if(R.active||!A.user||A.user.uid!==u.uid)return;
+P.get(u.uid).then(function(d){if(!A.user||A.user.uid!==u.uid||R.active)return;if(d)pok(u.uid);
+if(!d){window.__ssReg=true;R.name=R.name||u.name||'';show(2,1);return}
+loadPriv(u.uid);var k='';try{k=localStorage.getItem(KEY+u.uid)}catch(e){}
+if(k==='3'){window.__ssReg=true;R.claimed=true;R.name=d.name||'';R.user=d.username||'';show(3,1)}}).catch(function(){})}
+var _c=window.cmAuth;window.cmAuth=function(u){try{if(_c)_c(u)}catch(e){}
+if(!u){A.priv=null;clearTimeout(R.done);R=fresh();window.__ssReg=false;return}
+setTimeout(function(){resume(u)},500)};
+/* ---------- uses of the private details ---------- */
+var _r=render;render=function(){_r.apply(this,arguments);try{if(S.view==='chat'&&!S.cur.msgs.length&&A.priv&&A.priv.goals&&A.priv.goals.length){var ex=document.querySelector('.wl-ex');if(ex){var order=[];A.priv.goals.forEach(function(k){GOALS.forEach(function(x){if(x[0]===k)order.push(x[2])})});
+order.slice().reverse().forEach(function(a){var b=ex.querySelector('[data-act="'+a+'"]');if(b)ex.insertBefore(b,ex.firstChild)})}}}catch(e){}};
+if(typeof Views!=='undefined'&&Views.account){var _va=Views.account;Views.account=function(){var h=_va.apply(this,arguments);if(A.user&&A.priv&&A.priv.photo)h=h.replace('<div style="margin:0 0 16px"></div>','<div style="margin:0 0 16px"></div><img class="acct-av" src="'+A.priv.photo+'" alt="Your profile photo">');return h}}
+})()}catch(e){try{console.error('[Registration]',e)}catch(x){}}
+</script>
+<script>
+/* Screen transitions + stable navigation.
+   - One short fade/slide only when the screen actually changes (never on refreshes of the same screen).
+   - Uses the Web Animations API so the startup animation rules are never touched; skipped during startup and for reduced motion.
+   - Remembers where you were in Home / Notifications / Profile and returns you there.
+   - Tapping the tab you are already on scrolls to the top instead of re-rendering. */
+try{(function(){
+var root=document.documentElement,mq=window.matchMedia?matchMedia('(prefers-reduced-motion: reduce)'):null;
+var mem={},lastKey=null,lastView=null,anim=[],ORDER={cm_home:0,cm_feed:0,chat:1,cm_notif:3,cm_profile:4};
+function reduce(){return !!(mq&&mq.matches)}
+function C(){return S.cm||{}}
+function me(){var u=window.ScamSenseAuth&&ScamSenseAuth.user;return u&&u.uid||null}
+function mineProf(){var c=C(),P=c.prof;return !P||!!P.preview||(!!me()&&P.uid===me()&&!(c.pst&&c.pst.length))}
+function key(){var v=S.view,c=C();if(v==='cm_profile')return mineProf()?v+':'+(me()?'self':'preview'):v+':'+c.prof.uid;return v}
+function slot(v){return v==='cm_profile'?(mineProf()?4:-1):(v in ORDER?ORDER[v]:-1)}
+function stop(){anim.forEach(function(a){try{a.cancel()}catch(e){}});anim=[]}
+var _r=render;
+render=function(){
+var m=document.getElementById('main'),v=S.view,k=key(),was=lastKey,wv=lastView,top=m?m.scrollTop:0,fromSlot=wv?slot(wv):-1;
+if(was!==null&&m)mem[was]=top;
+_r.apply(this,arguments);
+try{
+m=document.getElementById('main');if(!m)return;
+var changed=was!==null&&k!==was,cm=/^cm_/.test(v);
+if(!changed){if(cm&&was!==null&&v!=='cm_create')m.scrollTop=top}
+else{
+ var back=wv==='cm_post'||wv==='cm_people',tab=/^cm_(home|feed|notif)$/.test(v)||(v==='cm_profile'&&mineProf());
+ if(v!=='chat'&&(tab||back)&&mem[k]!=null)m.scrollTop=mem[k];
+ if(!reduce()&&!root.classList.contains('ss-boot')&&!document.hidden&&m.animate){
+  stop();
+  var to=slot(v),dx=(fromSlot>=0&&to>=0&&fromSlot!==to)?(to>fromSlot?10:-10):0,dy=dx?0:8;
+  var o={duration:170,easing:'cubic-bezier(.22,.8,.26,1)'};
+  anim.push(m.animate([{opacity:0,transform:'translate('+dx+'px,'+dy+'px)'},{opacity:1,transform:'none'}],o));
+  var h=document.getElementById('hdr');if(h&&h.animate)anim.push(h.animate([{opacity:.35},{opacity:1}],{duration:150,easing:'ease-out'}))}}
+}catch(e){}
+lastKey=k;lastView=v};
+/* forget the saved position when something is opened fresh */
+var _a=act;
+act=function(a,arg){try{if(a==='cm-prof'&&arg)delete mem['cm_profile:'+arg];else if(a==='cm-open-post'&&arg)delete mem.cm_post;else if(a==='cm-nopen')delete mem.cm_post}catch(e){}
+return _a.apply(this,arguments)};
+/* tapping the tab you are already on: scroll to top, no re-render, no repeated animation */
+document.addEventListener('click',function(e){
+var b=e.target&&e.target.closest?e.target.closest('#cmnav .cm-n'):null;if(!b)return;
+var k=b.getAttribute('data-k'),v=S.view,same=(k==='home'&&(v==='cm_home'||v==='cm_feed'))||(k==='ai'&&v==='chat')||(k==='notif'&&v==='cm_notif')||(k==='me'&&v==='cm_profile'&&mineProf());
+if(!same)return;
+e.stopPropagation();e.preventDefault();
+var m=document.getElementById('main');
+if(k!=='ai'&&m&&m.scrollTop>0){try{m.scrollTo({top:0,behavior:reduce()?'auto':'smooth'})}catch(x){m.scrollTop=0}}
+},true);
+})()}catch(e){try{console.error('[Navigation]',e)}catch(x){}}
+</script>
+</body>
+</html>
