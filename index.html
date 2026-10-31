@@ -978,6 +978,54 @@ html[data-theme=light] input:focus-visible,html[data-theme=light] textarea:focus
  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
 
+
+/* ===== HORIZON BLUE: account, chat history and notification readability ===== */
+:root{--ss-horizon:#6F9FE8;--ss-horizon-deep:#3F73C7;--ss-horizon-wash:rgba(111,159,232,.14)}
+/* Account screen: remove the hard-coded locked-looking panel and improve contrast. */
+#main [data-view="account"]{}
+#main .row{color:inherit}
+html:not([data-theme="light"]) #main .row,
+html:not([data-theme="light"]) #main .card{background:#111D30;border-color:#293B55;color:#EAF1FC}
+html:not([data-theme="light"]) #main .rs{color:#AAB9D0}
+html:not([data-theme="light"]) #main button[data-act="acct-signout"]{background:#38232B!important;border-color:#70404C!important;color:#FFD7DE!important}
+html:not([data-theme="light"]) #main button[data-act="acct-signin"]{background:#315F9F!important;border-color:#527FB9!important;color:#fff!important}
+html[data-theme="light"] #main button[data-act="acct-signin"]{background:#356DB8!important;border-color:#356DB8!important;color:#fff!important}
+/* Account panel uses inline styles in its template; override only that screen's first panel. */
+#main:has(button[data-act="acct-signout"])>div:first-child,
+#main:has(button[data-act="acct-signin"])>div:first-child{
+ background:var(--cm-card,#F5F7FB)!important;border:1px solid var(--ss-border,#D5DFF0)!important;
+ border-radius:16px!important;color:var(--cm-text,#17243B)!important
+}
+html:not([data-theme="light"]) #main:has(button[data-act^="acct-"])>div:first-child{
+ background:#111D30!important;border-color:#293B55!important;color:#EAF1FC!important
+}
+#main:has(button[data-act^="acct-"])>div:first-child .rs{color:#7D8DA7!important}
+html[data-theme="light"] #main:has(button[data-act^="acct-"])>div:first-child .rs{color:#63728B!important}
+/* Chat history: clear rows, readable labels and a calmer empty state. */
+#main .row[data-act="hist"],#main .row:has([data-act="hist"]),
+#main [data-act="hist"]{
+ color:inherit
+}
+#main .row{border-color:var(--ss-border,#293B55)}
+#main .row:active{background:var(--ss-horizon-wash)}
+/* Community notifications: make the whole notification row readable and obviously tappable. */
+.cm-pa{min-height:68px;background:#14233A;border:1px solid #2A405F;color:#F0F5FC;border-radius:14px;padding:14px;transition:background-color 150ms ease,border-color 150ms ease}
+.cm-pa:active{background:#1B3150;border-color:var(--ss-horizon)}
+.cm-pa.cm-un{border-left:3px solid var(--ss-horizon);background:#182B46}
+.cm-pa .cm-sub{color:#B4C3D8}
+.cm-pa .cm-av{background:#29466C;color:#D8E8FF}
+.cm-dot{background:var(--ss-horizon)}
+html[data-theme="light"] .cm-pa{background:#FFFFFF;border-color:#D7E0ED;color:#18263B}
+html[data-theme="light"] .cm-pa.cm-un{background:#F0F5FD;border-left-color:#477CC5}
+html[data-theme="light"] .cm-pa .cm-sub{color:#687993}
+html[data-theme="light"] .cm-pa .cm-av{background:#E6EFFC;color:#315F9F}
+html[data-theme="light"] .cm-pa:active{background:#E7F0FC;border-color:#477CC5}
+/* Use Horizon Blue for focus and selected navigation, not neon gradients. */
+button:focus-visible,[role="button"]:focus-visible{outline-color:var(--ss-horizon)!important}
+#cmnav .cm-n.on{color:var(--ss-horizon)}
+#cmnav .cm-n.on svg{color:var(--ss-horizon)}
+@media(prefers-reduced-motion:reduce){.cm-pa{transition:none}}
+
 </style>
 </head>
 <body>
