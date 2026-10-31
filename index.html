@@ -2306,12 +2306,12 @@ var Billing={
 enabled:false,showPreview:true,bal:{verify:null,image:null},trial:null,msg:'',busy:0,ld:0,k:null,
 /* Subscriptions: separate switch. Needs Paystack plans (weekly + monthly) confirmed for USD, plus the extra Worker routes below. */
 subsEnabled:false,sub:null,
-/* PROPOSED plans, display copy only. No yearly plan. Quotas are placeholders until you confirm costs; the Worker is the real source of truth. */
-plans:[{id:'sub_weekly',name:'Weekly',price:'4.99',per:'week',verify:10,image:20},{id:'sub_monthly',name:'Monthly',price:'17.99',per:'month',verify:50,image:60}],
+/* Agreed subscription display pricing. Payment activation still depends on the billing backend. */
+plans:[{id:'sub_weekly',name:'Weekly',price:'7',per:'week',verify:10},{id:'sub_monthly',name:'Monthly',price:'15',per:'month',verify:20}],
 incl:function(k){var q=Billing.sub&&Billing.sub.quota;return q&&q[k]>0?q[k]:0},
 proposed:{currency:'USD',confirmed:false,
-verify:[{id:'verify_1',n:1,price:'2.99'},{id:'verify_3',n:3,price:'5.99'},{id:'verify_5',n:5,price:'8.99'}],
-image:[{id:'image_1',n:1,price:'1.99'},{id:'image_5',n:5,price:'4.99'},{id:'image_15',n:15,price:'9.99'}]},
+verify:[{id:'verify_5',n:5,price:'2'}],
+image:[]},
 uid:function(){return (window.crypto&&crypto.randomUUID)?crypto.randomUUID():'k'+Date.now()+Math.random().toString(36).slice(2)},
 tok:function(){return FirebaseAdapter.load(ScamSenseAuth.config).then(function(f){var u=f.auth.currentUser;if(!u)throw new Error('signin');return u.getIdToken()})},
 api:function(path,body){return Billing.tok().then(function(t){return fetch(Provider.workerUrl.replace(/\/$/,'')+path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify(body||{})})}).then(function(r){return r.json().catch(function(){return{}}).then(function(j){if(!r.ok){var e=new Error(j.error||'failed');e.code=j.code||'failed';throw e}return j})})},
@@ -2321,9 +2321,9 @@ panel:function(kind){return Billing.subSection()+Billing.oneTime(kind)},
 subSection:function(){var B=Billing;if(!B.enabled&&!B.showPreview)return '';var cur=B.proposed.currency,S0=B.sub,live=B.enabled&&B.subsEnabled,
 st={active:'Active. Renews automatically.','non-renewing':'Cancelled. Access continues until the end of the period you paid for.',attention:'Your last renewal payment failed. Please update your card with Paystack. Access depends on our server’s confirmation.',expired:'Expired. No plan access.'};
 var cur0=S0&&S0.plan?'<div class="card"><div style="font-weight:600">Your plan: '+esc(String(S0.plan))+'</div><div class="rs">'+esc(st[S0.status]||'Status unknown')+(S0.until?' Period ends '+esc(fmt(S0.until))+'.':'')+'</div>'+(S0.quota?'<div class="rs">Left this period: '+esc(String(S0.quota.verify))+' link verification'+(S0.quota.verify==1?'':'s')+', '+esc(String(S0.quota.image==null?0:S0.quota.image))+' image verification'+(S0.quota.image==1?'':'s')+'.</div>':'')+(S0.status==='active'||S0.status==='attention'?'<button class="chip" data-act="bill-cancel">Cancel renewal</button>':'')+'</div>':'';
-var cards=B.plans.map(function(k){var off=!live||(S0&&(S0.status==='active'||S0.status==='attention'));return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div style="font-weight:600">'+k.name+' plan</div><div class="rs">'+cur+' '+k.price+' per '+k.per+', renews automatically until you cancel</div></div><button class="chip" data-act="bill-buy" data-arg="'+k.id+'"'+(off?' disabled':'')+'>'+(live?'Subscribe':'Not open yet')+'</button></div><ul class="ul"><li>'+k.verify+' link verifications each '+k.per+'</li><li>'+k.image+' image verifications each '+k.per+'</li></ul></div>'}).join('');
+var cards=B.plans.map(function(k){var off=!live||(S0&&(S0.status==='active'||S0.status==='attention'));return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><div style="font-weight:600">'+k.name+' plan</div><div class="rs">'+cur+' '+k.price+' per '+k.per+', renews automatically until you cancel</div></div><button class="chip" data-act="bill-buy" data-arg="'+k.id+'"'+(off?' disabled':'')+'>'+(live?'Subscribe':'Not open yet')+'</button></div><ul class="ul"><li>'+k.verify+' link verifications each '+k.per+'</li></ul></div>'}).join('');
 return sect('Subscription plans')+(live?'':'<div class="demo" style="margin:0 0 10px">'+I('flask','aria-hidden="true"')+' Proposed plans. Subscriptions are not open yet.</div>')+cur0+cards
-+'<div class="rs" style="margin:0 0 6px">Included checks are used first. Unused included checks don’t roll over. One-time credits you bought are used only after the included ones run out, and never expire with the plan. Cancel any time: you keep access until the end of the period you paid for. No refunds for unused time unless the law requires it. The AI assistant, Money Check, ProofCheck, Image Trace and the community stay as they are today and are not part of this plan.</div><div class="rs" style="margin:0 0 12px">Access starts only after our server confirms the payment with Paystack, and ends if a renewal isn’t confirmed.</div>'},
++'<div class="rs" style="margin:0 0 6px">Included link credits are used first and reset only after a successful renewal. Unused credits do not roll over. Cancel any time; access continues until the end of the paid period. The AI assistant and other core features remain available even after link credits run out.</div><div class="rs" style="margin:0 0 12px">After your included links run out, you can watch a video ad to earn 1 extra link (daily limit applies), or buy 5 extra link verifications for $2. Extra-link purchases are separate from your subscription.</div><div class="rs" style="margin:0 0 12px">Access starts only after our server confirms payment. Subscription checkout is not active yet.</div>'},
 cancel:function(){var B=Billing;if(B.busy||!window.confirm('Stop renewing? You keep access until the end of the period you already paid for.'))return;B.busy=1;B.msg='Cancelling renewal…';render();B.api('/billing/cancel',{}).then(function(r){B.sub=r.sub||B.sub;B.busy=0;B.msg=r.sub&&r.sub.status==='non-renewing'?'Renewal cancelled. You keep access until the period ends.':'We couldn’t confirm the cancellation. Your plan may still renew. Try again.';render()}).catch(function(){B.busy=0;B.msg='We couldn’t confirm the cancellation. Your plan may still renew. Try again.';render()})},
 oneTime:function(kind){var B=Billing;if(!B.enabled&&!B.showPreview)return '';
 if(B.enabled&&B.bal[kind]==null&&!B.ld&&!B.bal.err)B.refresh();
@@ -5215,19 +5215,19 @@ Flow['trial-start']=function(){var B=Billing;if(B.busy||!B.enabled||!(B.trial&&B
 Views.plus=function(){
 var B=Billing,live=B.enabled&&B.subsEnabled,S0=B.sub;
 if(B.enabled&&B.bal.verify==null&&!B.ld&&!B.bal.err)B.refresh();
-var h=title('Get ScamSense Plus','Choose a plan or buy single verifications.')+'<div class="card"><div style="font-weight:600">Many tools, two use credits</div><div class="rs">ScamSense AI includes the AI Assistant, TrustCheck, Money Check, ProofCheck, Image Trace, Cases and the Community. None of these use credits. Only two services do: link verification (ScamSense Verify) and image verification (Image Authenticity). Running out of credits never limits anything else.</div></div>';
+var h=title('Get ScamSense Plus','Choose a plan for link verifications.')+'<div class="card"><div style="font-weight:600">Your subscription includes link verifications</div><div class="rs">Weekly includes 10 link verifications for $7. Monthly includes 20 link verifications for $15. Your AI assistant and the other core ScamSense features remain available even when your link credits run out.</div></div>';
 h+=B.enabled?'':'<div class="demo" style="margin:0 0 12px">'+I('flask','aria-hidden="true"')+' Prices shown are planned. Payments are not open yet, so nothing can be bought right now.</div>';
-if(B.enabled&&B.bal.verify!=null)h+='<div class="rs" style="margin:0 0 10px">Credits left: <b>'+esc(String(B.bal.verify))+'</b> link verification'+(B.bal.verify==1?'':'s')+', <b>'+esc(String(B.bal.image))+'</b> image verification'+(B.bal.image==1?'':'s')+'.</div>';
+if(B.enabled&&B.bal.verify!=null)h+='<div class="rs" style="margin:0 0 10px">Credits left: <b>'+esc(String(B.bal.verify))+'</b> link verification'+(B.bal.verify==1?'':'s')+'. </div>';
 if(S0&&S0.plan)h+='<div class="card"><div style="font-weight:600">Your plan: '+esc(String(S0.plan))+'</div><div class="rs">Status: '+esc(String(S0.status||'unknown'))+(S0.until?'. Period ends '+esc(fmt(S0.until)):'')+'.</div>'+(S0.status==='active'||S0.status==='attention'?'<button class="chip" style="margin-top:8px" data-act="bill-cancel">Cancel renewal</button>':'')+'</div>';
 h+=trialCard(B);
 var subOn=live&&!(S0&&(S0.status==='active'||S0.status==='attention'));
 h+=sect('Subscriptions');
-h+=B.plans.map(function(k){return card(k.name+' subscription',k.price,k.per,'Recurring payment, renews every '+k.per+' until cancelled',['Includes '+k.verify+' link verifications per period','Includes '+k.image+' image verifications per period','Credits reset only after a successful, verified renewal'],buyBtn(k.id,subOn?'Subscribe':(live?'Plan active':'Not open yet'),subOn))}).join('');
+h+=B.plans.map(function(k){return card(k.name+' subscription',k.price,k.per,'Recurring payment, renews every '+k.per+' until cancelled',['Includes '+k.verify+' link verifications per period','Link credits reset only after a successful, verified renewal'],buyBtn(k.id,subOn?'Subscribe':(live?'Plan active':'Not open yet'),subOn))}).join('');
 function oneTime(kind,head,noun){
 var P=B.proposed[kind],ok=B.enabled&&!B.incl(kind);
 return sect(head)+P.map(function(k){return card(k.n+' '+noun+(k.n>1?'s':''),k.price,'','One-time payment, not a subscription',['Includes '+k.n+' '+noun+(k.n>1?'s':'')],buyBtn(k.id,B.enabled?(ok?'Buy '+money(k.price):'Included in your plan'):'Not open yet',ok))}).join('')}
 h+=oneTime('verify','Link verification: one-time payment','link verification');
-h+=oneTime('image','Image verification: one-time payment','image verification');
+/* Image checks are not sold as a separate credit pack in this subscription model. */
 if(B.msg)h+='<div class="rs" role="status" style="margin:6px 0 10px">'+esc(B.msg)+'</div>';
 return h};
 Flow['plus-open']=function(from){S.plusFrom=from==='menu'?'menu':'chat';go('plus')};
