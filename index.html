@@ -991,16 +991,16 @@ html:not([data-theme="light"]) #main button[data-act="acct-signout"]{background:
 html:not([data-theme="light"]) #main button[data-act="acct-signin"]{background:#315F9F!important;border-color:#527FB9!important;color:#fff!important}
 html[data-theme="light"] #main button[data-act="acct-signin"]{background:#356DB8!important;border-color:#356DB8!important;color:#fff!important}
 /* Account panel uses inline styles in its template; override only that screen's first panel. */
-#main:has(button[data-act="acct-signout"])>div:first-child,
-#main:has(button[data-act="acct-signin"])>div:first-child{
+#main:has(button[data-act="acct-signout"])>div:nth-child(2),
+#main:has(button[data-act="acct-signin"])>div:nth-child(2){
  background:var(--cm-card,#F5F7FB)!important;border:1px solid var(--ss-border,#D5DFF0)!important;
  border-radius:16px!important;color:var(--cm-text,#17243B)!important
 }
-html:not([data-theme="light"]) #main:has(button[data-act^="acct-"])>div:first-child{
+html:not([data-theme="light"]) #main:has(button[data-act^="acct-"])>div:nth-child(2){
  background:#111D30!important;border-color:#293B55!important;color:#EAF1FC!important
 }
-#main:has(button[data-act^="acct-"])>div:first-child .rs{color:#7D8DA7!important}
-html[data-theme="light"] #main:has(button[data-act^="acct-"])>div:first-child .rs{color:#63728B!important}
+#main:has(button[data-act^="acct-"])>div:nth-child(2) .rs{color:#7D8DA7!important}
+html[data-theme="light"] #main:has(button[data-act^="acct-"])>div:nth-child(2) .rs{color:#63728B!important}
 /* Chat history: clear rows, readable labels and a calmer empty state. */
 #main .row[data-act="hist"],#main .row:has([data-act="hist"]),
 #main [data-act="hist"]{
