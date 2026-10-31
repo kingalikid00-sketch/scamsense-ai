@@ -208,6 +208,15 @@ textarea{outline:none}
 .hm-list::-webkit-scrollbar{display:none}
 .hm-list .pill{flex:none;min-height:54px;margin:0 0 6px;padding-top:6px;padding-bottom:6px}
 .hm-list{padding-top:8px}
+/* Settings switches and smooth screen entrance */
+.ss-switch{width:54px;height:32px;border:0;border-radius:20px;background:#43516F;padding:3px;display:inline-flex;align-items:center;justify-content:flex-start;flex:none;cursor:pointer;transition:background .22s ease}
+.ss-switch i{width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.22);transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+.ss-switch.active,.ss-switch[aria-pressed=true]{background:#16BFA5}
+.ss-switch.active i,.ss-switch[aria-pressed=true] i{transform:translateX(22px)}
+.setting-row{min-height:76px}
+.settings-screen,.saved-screen{animation:ssScreenIn .28s cubic-bezier(.2,.8,.2,1) both;transform-origin:50% 12%}
+@keyframes ssScreenIn{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.settings-screen,.saved-screen{animation:none}.ss-switch,.ss-switch i{transition:none}}
 /* ===== THEME CONTROL (in menu) ===== */
 .thm{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0E1A3C;border:1px solid #1A2A55;border-radius:16px;padding:12px 14px;margin:0 0 10px}
 .thm .seg{display:flex;gap:4px;background:#0B1738;border:1px solid #2A3F78;border-radius:22px;padding:3px}
@@ -1223,20 +1232,20 @@ var box=r?'<div style="background:#0E1A3C;border:1px solid #1A2A55;border-radius
 return title('ScamSense Verify','Live identity verification')+'<div style="margin:0 0 14px">Ask someone to prove they’re really there, right now. It’s their choice, and they’ll be told why.</div>'+box+'<div class="h">What the other person would see</div><ul class="ul"><li>A clear note that a check is being requested.</li><li>That their camera may be needed.</li><li>That it’s voluntary, and why you’re asking.</li></ul><div class="h">What a real check could show</div><ul class="ul"><li>Live verification passed or not.</li><li>Time of the check.</li><li>Country, only if they allow it.</li><li>A one-time ID.</li><li>Optional: face similarity with a picture you supply.</li></ul><div class="h">What it can’t show</div><div style="color:#B4C3E8">A pass doesn’t prove legal identity. Face similarity doesn’t prove someone owns an account. This prototype runs no real verification.</div>'},
 saved:function(){
 var list=[];try{list=JSON.parse(localStorage.getItem(savedKey())||'[]')}catch(e){}
-var h=title('Saved Scans','Your saved investigations stay private on this device.');
+var h='<div class="saved-screen">'+title('Saved Scans','Your saved investigations stay private on this device.');
 var current=S.cur&&S.cur.msgs&&S.cur.msgs.length;
 h+='<button class="btn" data-act="saved-current" style="width:100%;margin:0 0 16px;background:#2563EB;color:#fff" '+(!current?'disabled':'')+'>Save current investigation</button>';
-if(!list.length)return h+'<div style="text-align:center;padding:28px 12px;color:#8FA0C8"><div style="font-size:18px;color:#EAF0FF;font-weight:600;margin-bottom:6px">Nothing saved yet</div>Your saved investigations will appear here.</div>';
+if(!list.length)return h+'<div style="text-align:center;padding:28px 12px;color:#8FA0C8"><div style="font-size:18px;color:#EAF0FF;font-weight:600;margin-bottom:6px">Nothing saved yet</div>Your saved investigations will appear here.</div></div>';
 return h+list.slice().reverse().map(function(x){return '<div class="row" style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><button data-act="saved-view" data-arg="'+esc(x.id)+'" style="flex:1;text-align:left;background:none;border:0;color:inherit;font:inherit;min-width:0"><span class="rt">'+esc(x.title)+'</span><div class="rs">'+esc(x.date)+' · '+x.count+' messages</div></button><button class="ib" data-act="saved-delete" data-arg="'+esc(x.id)+'" aria-label="Delete saved scan">'+I('trash','')+'</button></div>'}).join('')
 },
 settings:function(){
-var n=localStorage.getItem(settingsKey('notifications'))!=='off';
-return title('Settings','Choose how ScamSense works on this device.')
-+'<div class="row"><span style="flex:1"><span class="rt">Appearance</span><div class="rs">Choose a comfortable screen theme.</div></span><div class="seg"><button data-theme-set="dark" aria-pressed="'+(curTheme()==='dark')+'">Dark</button><button data-theme-set="light" aria-pressed="'+(curTheme()==='light')+'">Light</button></div></div>'
-+'<button class="row" data-act="settings-notifications"><span style="flex:1"><span class="rt">Notifications</span><div class="rs">Local preference: '+(n?'On':'Off')+'</div></span><span class="tag">'+(n?'On':'Off')+'</span></button>'
-+'<div class="row"><span><span class="rt">Privacy</span><div class="rs">Saved scans are stored on this device and are not shared publicly.</div></span></div>'
-+'<button class="row" data-act="settings-clear-saved"><span style="flex:1"><span class="rt">Delete all saved scans</span><div class="rs">This only deletes your saved investigation copies.</div></span></button>'
-+'<div style="color:#8FA0C8;font-size:13px;padding:14px 4px">ScamSense AI · Settings are currently stored on this device. Notification control does not yet manage push notifications.</div>'
+var n=localStorage.getItem(settingsKey('notifications'))!=='off',t=curTheme();
+return '<div class="settings-screen">'+title('Settings','Make ScamSense feel right for you.')
++'<div class="row setting-row"><span style="flex:1"><span class="rt">Appearance</span><div class="rs">Change how ScamSense looks.</div></span><button class="ss-switch" type="button" data-theme-toggle aria-label="Toggle appearance" aria-pressed="'+(t==='light')+'"><i></i></button></div>'
++'<button class="row setting-row" data-act="settings-notifications"><span style="flex:1"><span class="rt">Notifications</span><div class="rs">Choose whether notifications are enabled.</div></span><span class="ss-switch'+(n?' active':'')+'" aria-hidden="true"><i></i></span></button>'
++'<div class="row"><span><span class="rt">Privacy</span><div class="rs">Saved scans stay on this device and are not shared publicly.</div></span></div>'
++'<button class="row" data-act="settings-clear-saved"><span style="flex:1"><span class="rt">Delete all saved scans</span><div class="rs">Delete your saved investigation copies.</div></span></button>'
++'<div style="color:var(--cm-mute,#8FA0C8);font-size:13px;padding:14px 4px">ScamSense AI · These preferences are saved on this device. Notification control is a preference; push alerts are not active yet.</div></div>'
 },
 'saved-detail':function(){
 var x=S.savedView;if(!x)return title('Saved investigation','This saved item is no longer available.');
