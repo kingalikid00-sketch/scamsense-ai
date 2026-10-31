@@ -291,7 +291,7 @@ async function callGemini(env, requestBody, origin, opts) {
 
 // OpenRouter is a text-only backup for ordinary chat. Images and structured investigations stay on Gemini.
 async function callOpenRouter(env, requestBody) {
-  if (!env || !env.OPENROUTER_API_KEY) return { ok: false };
+  if (!env || env.OPENROUTER_ENABLED === "false" || !env.OPENROUTER_API_KEY) return { ok: false };
   const configured = typeof env.OPENROUTER_MODEL === "string" ? env.OPENROUTER_MODEL.trim() : "";
   const model = configured && /^[A-Za-z0-9._:/-]{1,120}$/.test(configured) ? configured : "openrouter/free";
   const messages = [];
