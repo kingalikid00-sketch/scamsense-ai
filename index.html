@@ -1238,7 +1238,7 @@ return title('Settings','Choose how ScamSense works on this device.')
 +'<button class="row" data-act="settings-clear-saved"><span style="flex:1"><span class="rt">Delete all saved scans</span><div class="rs">This only deletes your saved investigation copies.</div></span></button>'
 +'<div style="color:#8FA0C8;font-size:13px;padding:14px 4px">ScamSense AI · Settings are currently stored on this device. Notification control does not yet manage push notifications.</div>'
 },
-savedDetail:function(){
+'saved-detail':function(){
 var x=S.savedView;if(!x)return title('Saved investigation','This saved item is no longer available.');
 return title(esc(x.title),esc(x.date))+'<div style="color:#8FA0C8;margin-bottom:16px">Saved copy · '+x.count+' messages</div>'+x.msgs.map(function(m){return '<div style="padding:12px;margin:0 0 10px;border-radius:14px;background:'+(m.role==='user'?'#173B83':'#0E1A3C')+';white-space:pre-wrap;overflow-wrap:anywhere">'+esc(m.raw||m.html.replace(/<[^>]*>/g,' '))+'</div>'}).join('')+'<button class="btn" data-act="saved-delete" data-arg="'+esc(x.id)+'">Delete saved investigation</button>';
 },
