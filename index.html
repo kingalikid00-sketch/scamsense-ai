@@ -927,6 +927,57 @@ html[data-theme=light] #app{--pf-bd:rgba(15,26,51,.26)}
 html[data-theme=light] #ssload{background:rgba(255,255,255,.88)}
 html[data-theme=light] #ssload .sl-t{color:#0F1A33}
 @media (prefers-reduced-motion:reduce){#ssload .sl-ring{animation-duration:2.4s}#ssload .sl-pulse,#ssload .sl-lg img{animation:none}#ssload .sl-bar i{animation-duration:2.4s}}
+
+/* ===== QUIETER, MORE HUMAN APP FINISH =====
+   Shared visual rules: calm surfaces, one clear accent, steady tap feedback. */
+:root{
+ --ss-accent:#3978D8;--ss-accent-soft:rgba(57,120,216,.13);
+ --ss-radius:14px;--ss-border:rgba(139,160,198,.18);
+ --ss-motion:160ms cubic-bezier(.2,.7,.2,1);
+}
+html,body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#app{background:#0D1422}
+button{touch-action:manipulation;transition:background-color var(--ss-motion),border-color var(--ss-motion),color var(--ss-motion),opacity var(--ss-motion),transform var(--ss-motion)}
+button:active:not(:disabled){transform:scale(.985)}
+button:disabled{cursor:not-allowed}
+button:focus-visible,[role=button]:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{
+ outline:2px solid #76A9F5!important;outline-offset:3px!important;box-shadow:none!important
+}
+.row,.card,.pill,.cm-card,.cm-tile,.cm-pa,.cm-opt{
+ box-shadow:none!important
+}
+.row{border-radius:14px}
+.card,.cm-card,.cm-tile{border-radius:14px}
+.pill{border-radius:14px;min-height:56px}
+.cm-card{border-radius:14px}
+.cm-logo,.cm-ti{background:#285BA8}
+#cmnav .cm-n.cm-plus svg{box-shadow:none}
+#cmnav .cm-n{min-height:44px}
+.ib,.cm-dots,.cm-send,.cm-n{ -webkit-user-select:none;user-select:none}
+.settings-screen,.saved-screen{animation:ssScreenIn 180ms ease-out both}
+@keyframes ssScreenIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.ss-switch{width:50px;height:30px;padding:3px}
+.ss-switch i{width:24px;height:24px}
+.ss-switch.active i,.ss-switch[aria-pressed=true] i{transform:translateX(20px)}
+.setting-row{min-height:72px}
+.cm-chip,.chip{transition:background-color var(--ss-motion),border-color var(--ss-motion),color var(--ss-motion)}
+.cm-chip.on{background:#285BA8;border-color:#285BA8}
+.cm-btn,.prim,.btn,.sec{box-shadow:none}
+#dock{background:transparent}
+html[data-theme=light] #app{background:#F5F7FA}
+html[data-theme=light] .cm-logo,html[data-theme=light] .cm-ti{background:#285BA8}
+html[data-theme=light] .cm-chip.on{background:#285BA8;border-color:#285BA8;color:#fff}
+html[data-theme=light] button:focus-visible,html[data-theme=light] [role=button]:focus-visible,
+html[data-theme=light] input:focus-visible,html[data-theme=light] textarea:focus-visible{
+ outline-color:#285BA8!important
+}
+@media(hover:hover){
+ button:not(:disabled):hover{filter:brightness(1.045)}
+}
+@media(prefers-reduced-motion:reduce){
+ *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+
 </style>
 </head>
 <body>
@@ -3781,7 +3832,7 @@ case 'settings-open':go('settings');break;
 case 'saved-current':saveCurrentScan();break;
 case 'saved-delete':(function(){var a=[];try{a=JSON.parse(localStorage.getItem(savedKey())||'[]')}catch(e){};a=a.filter(function(x){return x.id!==arg});localStorage.setItem(savedKey(),JSON.stringify(a));render()})();break;
 case 'saved-view':(function(){var a=[];try{a=JSON.parse(localStorage.getItem(savedKey())||'[]')}catch(e){};var x=a.filter(function(y){return y.id===arg})[0];if(!x)return;S.savedView=x;go('saved-detail')})();break;
-case 'settings-notifications':localStorage.setItem(settingsKey('notifications'),localStorage.getItem(settingsKey('notifications'))==='off'?'on':'off');render();break;
+case 'settings-notifications':(function(){var on=localStorage.getItem(settingsKey('notifications'))==='off';localStorage.setItem(settingsKey('notifications'),on?'on':'off');var b=document.querySelector('[data-act="settings-notifications"]');if(b){b.setAttribute('aria-pressed',String(on));var sw=b.querySelector('.ss-switch');if(sw)sw.classList.toggle('active',on)}})();break;
 case 'settings-clear-saved':if(confirm('Delete all saved investigations on this device?')){localStorage.removeItem(savedKey());render()}break;
 case 'menu':go('menu');break;
 case 'sidebar':sbOpen();break;
