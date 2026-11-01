@@ -2573,7 +2573,7 @@ var AUTH_STEPS=['Preparing the picture checker','Checking the picture','Calculat
    the website fetches the same verified model from the ScamSense Worker. */
 var SS_MODEL_URL='https://scamsense-ai.kingalikid00.workers.dev/detector-model';
 var SS_MODEL_SHA='87cf796d2ca7cd20039e17c4be40ff4559f58d16d29410e38e3fb8234e60c10e';
-var ssOrtPromise=null,ssModelPromise=null,ssDetectorSession=null;
+var ssOrtPromise=null,ssModelPromise=null,ssDetectorSession=null,ssDetectorSessionPromise=null;
 function loadSSOrt(){
  if(ssOrtPromise)return ssOrtPromise;
  ssOrtPromise=(async function(){
@@ -2619,12 +2619,33 @@ async function ssLoadModel(){
 }
 async function warmScamSenseDetector(){
  if(ssDetectorSession)return ssDetectorSession;
- var ort=await loadSSOrt();
- ort.env.wasm.wasmPaths=window.ssOrtWasmBase||'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
- ort.env.wasm.numThreads=1;
- var model=await ssLoadModel();
- ssDetectorSession=await ort.InferenceSession.create(model,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
- return ssDetectorSession;
+ if(ssDetectorSessionPromise)return ssDetectorSessionPromise;
+ ssDetectorSessionPromise=(async function(){
+  var ort=await loadSSOrt();
+  ort.env.wasm.wasmPaths=window.ssOrtWasmBase||'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+  ort.env.wasm.numThreads=1;
+  var model=await ssLoadModel();
+  try{
+   /* Keep peak memory low on phones: avoid graph copies, memory arenas and
+      weight pre-packing while the 12 MB model is copied into WebAssembly. */
+   ssDetectorSession=await ort.InferenceSession.create(model,{
+    executionProviders:['wasm'],
+    graphOptimizationLevel:'disabled',
+    executionMode:'sequential',
+    enableMemPattern:false,
+    enableCpuMemArena:false,
+    extra:{session:{disable_prepacking:'1'}}
+   });
+   return ssDetectorSession;
+  }finally{
+   model=null;
+   ssModelPromise=null;
+  }
+ })().catch(function(e){
+  ssDetectorSessionPromise=null;
+  throw e;
+ });
+ return ssDetectorSessionPromise;
 }
 function ssImageTensor(img,ort){
  var C=256,scale=C/Math.min(img.naturalWidth||img.width,img.naturalHeight||img.height);
