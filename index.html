@@ -1758,7 +1758,7 @@ link_mention:'They shared a link in passing. Do not assume they want it checked 
 check_picture:'A picture is attached and they want it checked. If they are asking whether the person in it is real, treat it as a question about that person and say what you can and cannot tell from one picture. Describe only what you actually see (text, logos, chat screenshots, payment requests). If it is a screenshot of a message, analyze that message. Say what you cannot verify. Use the analysis format.',
 check_picture_ask:'They want a picture checked but nothing is attached. Ask them to add it with the picture button, and ask where they got it if that would help. Short.',
 image_trace:'They want to know if this picture is used elsewhere. ScamSense Image Trace is not connected in this prototype and you cannot search the web. Say so plainly, describe what you can see, suggest they try a public reverse image search (Google Lens or TinEye), and ask where they got the picture. Do not invent any match or source.',
-image_auth:'They ask whether this picture is AI-generated or edited. ScamSense Image Authenticity uses an on-device Detectra model when the user runs the dedicated image check. Do not claim you personally analysed the image from chat alone. Explain that the dedicated check gives an estimate, not proof, and mention that the picture stays on the device. is not proof either way.',
+image_auth:'They ask whether this picture is AI-generated or edited. ScamSense Image Authenticity checks C2PA Content Credentials on the device when the dedicated check is run. It does not directly detect Google SynthID or every provider’s invisible watermark. Do not claim the picture is real or AI-generated from missing credentials. Do not claim you personally analysed an image from chat alone. is not proof either way.',
 check_person:'They want to check a person. Ask what they would like to check about this person (verify them, check their picture, check their profile, or check what they said) or invite them to tell you what happened. Keep it short and add actions:verify_person,check_picture,check_message.',
 verify_person:'They want to verify a person. Explain ScamSense Verify simply: the other person can voluntarily complete a live check so the user can see whether a real person completed it. Keep live presence, face similarity, identity, and account ownership separate, and say it does not prove legal identity or account ownership. It is a demo in this prototype. Add actions:verify_person.',
 person_story:'They mention a person they met or know and may be worried. Respond naturally and gently with ONE simple question to draw out the story (how they know the person, or what happened next). Do not analyze yet unless there is already enough. Do not call anyone a scammer.',
@@ -2532,121 +2532,77 @@ imgs.forEach(function(im,i){var n=i===0?3:(i===1?1:0);for(var k=0;k<n;k++){var m
 return{demo:true,alias:alias||'',matches:out,count:imgs.length,ran:new Date()};
 }
 
-/* ---------- ScamSense Image Authenticity: on-device AI engine ---------- */
-var SS_MODEL_URL='https://huggingface.co/Vontra/detectra-v1/resolve/d8709d3c39aa69ab862748badce0d4a06e90bf4c/model.onnx';
-var SS_MODEL_SHA='1414b9aafaa01a644ed706224973f09b53a1388282104409862df9893b1b962b';
-var SS_MODEL_CACHE='scamsense-image-model-v1';
-var SS_MODEL_BYTES=43684258;
-var SS_ORT_URL='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.2/dist/ort.webgpu.min.js';
-var SS_ORT_WASM='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.2/dist/';
-var ssOrtPromise=null,ssModelPromise=null,ssSessionPromise=null,ssSession=null,ssEngine='',ssWarmPromise=null;
-
-function loadScamSenseOrt(){
- if(window.ort)return Promise.resolve(window.ort);
- if(ssOrtPromise)return ssOrtPromise;
- ssOrtPromise=new Promise(function(resolve,reject){
-  var old=document.querySelector('script[data-ss-ort]');
-  if(old){old.addEventListener('load',function(){window.ort?resolve(window.ort):reject(new Error('The local AI engine could not start.'))},{once:true});old.addEventListener('error',function(){reject(new Error('The AI engine could not be downloaded.'))},{once:true});return}
-  var sc=document.createElement('script');sc.src=SS_ORT_URL;sc.async=true;sc.dataset.ssOrt='1';
-  sc.onload=function(){if(window.ort)resolve(window.ort);else reject(new Error('The AI engine did not load correctly.'))};
-  sc.onerror=function(){reject(new Error('The AI engine could not be downloaded. Please check your connection.'))};
-  document.head.appendChild(sc);
- }).catch(function(e){ssOrtPromise=null;throw e});
- return ssOrtPromise;
+/* ---------- ScamSense Image Provenance: local C2PA reader ---------- */
+/* This reads signed Content Credentials in the selected file. It does not claim to detect every AI watermark. */
+var ssC2paPromise=null;
+var AUTH_STEPS=['Opening the picture','Checking its content credentials','Preparing your result'];
+function warmScamSenseDetector(){return Promise.resolve(null)}
+async function loadScamSenseC2pa(){
+ if(ssC2paPromise)return ssC2paPromise;
+ ssC2paPromise=(async function(){
+  var mod=await import('https://esm.sh/@contentauth/c2pa-web@0.15.4?bundle');
+  if(!mod||typeof mod.createC2pa!=='function'||!mod.Reader)throw new Error('The content-credentials reader did not load correctly.');
+  var c2pa=await mod.createC2pa({wasmSrc:'https://cdn.jsdelivr.net/npm/@contentauth/c2pa-web@0.15.4/dist/resources/c2pa_bg.wasm'});
+  return {c2pa:c2pa,Reader:mod.Reader};
+ })().catch(function(e){ssC2paPromise=null;throw new Error('The free on-device provenance checker could not start. Please check your connection and try again.')});
+ return ssC2paPromise;
 }
-async function getScamSenseModel(){
- if(ssModelPromise)return ssModelPromise;
- ssModelPromise=(async function(){
-  var cache=await caches.open(SS_MODEL_CACHE),hit=await cache.match(SS_MODEL_URL);
-  if(hit){var saved=await hit.arrayBuffer();if(saved.byteLength===SS_MODEL_BYTES)return saved;await cache.delete(SS_MODEL_URL)}
-  var response=await fetch(SS_MODEL_URL,{cache:'no-store'});
-  if(!response.ok)throw new Error('The AI model could not be downloaded. Please try again.');
-  var bytes=await response.arrayBuffer();
-  if(bytes.byteLength!==SS_MODEL_BYTES)throw new Error('The AI model download was incomplete. Please try again.');
-  var digest=await crypto.subtle.digest('SHA-256',bytes);
-  var hex=Array.from(new Uint8Array(digest)).map(function(x){return x.toString(16).padStart(2,'0')}).join('');
-  if(hex!==SS_MODEL_SHA)throw new Error('The AI model failed its safety check and was not installed.');
-  await cache.put(SS_MODEL_URL,new Response(bytes,{headers:{'Content-Type':'application/octet-stream'}}));
-  return bytes;
- })().catch(function(e){ssModelPromise=null;throw e});
- return ssModelPromise;
+function ssDeepText(value,depth){
+ if(depth>7||value==null)return '';
+ if(typeof value==='string')return value;
+ if(typeof value==='number'||typeof value==='boolean')return String(value);
+ if(Array.isArray(value))return value.map(function(x){return ssDeepText(x,depth+1)}).join(' ');
+ if(typeof value==='object')return Object.keys(value).map(function(k){return k+' '+ssDeepText(value[k],depth+1)}).join(' ');
+ return '';
 }
-async function getScamSenseSession(){
- if(ssSession)return ssSession;
- if(ssSessionPromise)return ssSessionPromise;
- ssSessionPromise=(async function(){
-  var ort=await loadScamSenseOrt();
-  ort.env.wasm.wasmPaths=SS_ORT_WASM;
-  ort.env.wasm.numThreads=window.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||2)):1;
-  ort.env.wasm.proxy=false;
-  var bytes=await getScamSenseModel(),last=null,tries=[];
-  /* Reduce extra memory used while loading the 43.7 MB model on phones. */
-  var leanOptions={enableCpuMemArena:false,enableMemPattern:false,graphOptimizationLevel:'disabled'};
-  if(navigator.gpu)tries.push(['webgpu',Object.assign({executionProviders:['webgpu']},leanOptions)]);
-  tries.push(['wasm',Object.assign({executionProviders:['wasm']},leanOptions)]);
-  for(var i=0;i<tries.length;i++){
-   try{ssSession=await ort.InferenceSession.create(bytes,tries[i][1]);ssEngine=tries[i][0];break}
-   catch(e){last=e}
-  }
-  /* Release the extra JavaScript copy after ONNX Runtime has created its session. */
-  bytes=null;ssModelPromise=null;
-  if(!ssSession){
-   var detail=last&&last.message?last.message:'';
-   if(/failed to allocate a buffer|memory|out of memory/i.test(detail)){
-    throw new Error('Your device ran out of available memory while loading the 44 MB AI model. Close other browser tabs and apps, reload ScamSense, and try again. If it still fails, this device may not have enough memory for this model.');
-   }
-   throw new Error('ScamSense could not start the AI model in this browser. Please update your browser and try again.'+(detail?' ('+detail.slice(0,100)+')':''));
-  }
-  return ssSession;
- })().catch(function(e){ssSessionPromise=null;throw e});
- return ssSessionPromise;
-}
-function ssImageTensor(bitmap,ort){
- var size=384,resize=440,short=Math.min(bitmap.width,bitmap.height);
- var side=short*size/resize,sx=(bitmap.width-side)/2,sy=(bitmap.height-side)/2;
- var c=document.createElement('canvas');c.width=size;c.height=size;
- var g=c.getContext('2d',{willReadFrequently:true});
- if(!g)throw new Error('This phone could not prepare the picture.');
- g.imageSmoothingEnabled=true;g.imageSmoothingQuality='high';
- g.drawImage(bitmap,sx,sy,side,side,0,0,size,size);
- var d=g.getImageData(0,0,size,size).data,n=size*size,out=new Float32Array(3*n);
- for(var i=0;i<n;i++){
-  out[i]=(d[i*4]/255-.485)/.229;
-  out[n+i]=(d[i*4+1]/255-.456)/.224;
-  out[2*n+i]=(d[i*4+2]/255-.406)/.225;
+async function analyzeLocal(file){
+ if(!file||!/^image\/(jpeg|png|webp|avif|tiff)$/.test(file.type||''))throw new Error('Choose a JPEG, PNG, WebP, AVIF or TIFF picture.');
+ if(file.size>15*1024*1024)throw new Error('Choose a picture smaller than 15 MB.');
+ var loaded=await loadScamSenseC2pa(),reader=null,store=null;
+ try{
+  reader=await loaded.Reader.fromBlob(loaded.c2pa,file.type,file);
+  if(!reader)return {provider:'ScamSense Provenance',status:'not_found',name:file.name,at:new Date(),summary:'No C2PA Content Credentials were found in this picture.',details:[],limitations:[
+   'No supported content credentials were found. This does not prove the picture is real.',
+   'This check does not detect Google SynthID or every provider’s invisible watermark.',
+   'Screenshots, edits and social apps can remove content credentials.',
+   'The picture was checked on this device and was not uploaded by ScamSense.'
+  ]};
+  store=await reader.manifestStore();
+ }finally{
+  if(reader&&typeof reader.free==='function'){try{await reader.free()}catch(e){}}
  }
- return new ort.Tensor('float32',out,[1,3,size,size]);
-}
-function warmScamSenseDetector(){
-  if(ssSession)return Promise.resolve(ssSession);
-  if(ssWarmPromise)return ssWarmPromise;
-  ssWarmPromise=getScamSenseSession().catch(function(e){ssWarmPromise=null;throw e});
-  return ssWarmPromise;
+ var active=store&&store.active_manifest;
+ if(typeof active==='string'&&store.manifests)active=store.manifests[active];
+ if(!active&&store&&store.manifests){
+  var keys=Object.keys(store.manifests);if(keys.length)active=store.manifests[keys[0]];
  }
- async function analyzeLocal(file){
- if(!file||!/^image\/(jpeg|png|webp)$/.test(file.type||''))throw new Error('Choose a JPEG, PNG or WebP picture.');
- if(file.size>8*1024*1024)throw new Error('Choose a picture smaller than 8 MB.');
- var ort=await loadScamSenseOrt(),session=await warmScamSenseDetector(),bitmap;
- try{bitmap=await createImageBitmap(file)}catch(e){throw new Error('This picture could not be opened. Please choose another one.')}
- if(bitmap.width<64||bitmap.height<64){bitmap.close();throw new Error('Choose a larger picture so the detector can examine it.')}
- var tensor;
- try{tensor=ssImageTensor(bitmap,ort)}finally{bitmap.close()}
- var result=await session.run({[session.inputNames[0]]:tensor});
- var logit=Number(result[session.outputNames[0]].data[0]);
- if(!Number.isFinite(logit))throw new Error('The AI model returned an unreadable result. Please try again.');
- var p=1/(1+Math.exp(-(1.121656*logit+.506874)));
- var assessment=p>=.65?'strong_ai_signal':(p<=.35?'low_ai_signal':'uncertain');
- var explanation=assessment==='strong_ai_signal'
-  ?'The on-device model found a strong signal that this picture may have been AI-generated.'
-  :assessment==='low_ai_signal'
-   ?'The on-device model found a low AI-generation signal. This does not prove the picture is genuine.'
-   :'The model result is uncertain. It cannot make a confident call either way.';
- return {provider:'ScamSense On-device',model:'Detectra v3',engine:ssEngine,assessment:assessment,aiGeneratedScore:p,explanation:explanation,name:file.name,at:new Date(),limitations:[
-  'This is an AI estimate, not proof that a picture is real or AI-made.',
-  'The picture is analysed on this device. ScamSense does not upload it to an image-detection service.',
-  'The first use downloads an AI model of about 44 MB. It is saved in this browser for later checks.',
-  'New AI tools, heavy edits, screenshots and compression can affect the result.',
-  'This does not identify a person or prove who owns an account.'
+ if(!active)return {provider:'ScamSense Provenance',status:'not_found',name:file.name,at:new Date(),summary:'No readable C2PA Content Credentials were found in this picture.',details:[],limitations:[
+  'No readable content credentials were found. This does not prove the picture is real.',
+  'This check does not detect Google SynthID or every provider’s invisible watermark.',
+  'The picture was checked on this device and was not uploaded by ScamSense.'
+ ]};
+ var all=ssDeepText(active,0)+' '+ssDeepText(store.validation_status||[],0);
+ var low=all.toLowerCase();
+ var aiSource=/trainedalgorithmicmedia|compositewithtrainedalgorithmicmedia|digitalSourceType[^\n]{0,100}algorithmic/i.test(all);
+ var sig=active.signature_info||active.signatureInfo||{};
+ var issuer=String(sig.issuer||sig.common_name||sig.commonName||'').trim();
+ var generator=String(active.claim_generator||active.claimGenerator||'').trim();
+ var statuses=store.validation_status||active.validation_status||active.validationStatus||[];
+ var statusText=ssDeepText(statuses,0);
+ var invalid=/invalid|failure|error|untrusted/i.test(statusText);
+ var details=[];
+ details.push('Signed Content Credentials were found in the picture.');
+ if(issuer)details.push('Credential signer: '+issuer+'.');
+ if(generator)details.push('Creator software: '+generator+'.');
+ details.push(aiSource?'The credential records AI-generated or AI-assisted content.':'The credential does not clearly say that AI was used to create the picture.');
+ if(statusText)details.push('Credential validation information: '+statusText.slice(0,500)+'.');
+ var summary=invalid?'Credentials were found, but their validation information includes a warning. Do not treat them as trusted proof.':(aiSource?'The picture contains a Content Credentials record that describes AI-generated or AI-assisted content.':'The picture contains Content Credentials, but they do not clearly identify it as AI-generated.');
+ return {provider:'ScamSense Provenance',status:invalid?'credentials_warning':(aiSource?'ai_record':'credentials_found'),name:file.name,at:new Date(),issuer:issuer,generator:generator,summary:summary,details:details,limitations:[
+  'Content Credentials are signed origin records. They are not the same as a pixel-level invisible watermark.',
+  'This check does not directly detect Google SynthID or every provider’s watermark.',
+  'A missing record does not prove a picture is real. Sharing and editing can remove records.',
+  'This check does not identify the person in the picture or who sent it.',
+  'The picture was checked on this device and was not uploaded by ScamSense.'
  ]};
 }
 /* ---------- Image Authenticity demo (metadata scan only) ---------- */
@@ -2837,44 +2793,25 @@ return title('Trace results','Demo results')
 /* ----- Feature 3: Image Authenticity ----- */
 Views.auth=function(){
 var A=S.auth;
-if(A.stage==='run')return title('Checking your picture','Please wait')+demoBox('ScamSense is preparing the detector and analysing your picture on this phone. The first setup may take longer; later checks should be faster.')+'<div style="height:14px"></div>'+stepsView(AUTH_STEPS,S.stepIdx||0);
+if(A.stage==='run')return title('Checking your picture','Please wait')+demoBox('ScamSense is checking the picture’s content credentials on this device. The picture is not uploaded.')+'<div style="height:14px"></div>'+stepsView(AUTH_STEPS,S.stepIdx||0);
 if(A.stage==='done'&&A.res)return authResult();
 var pick=A.img?'<div class="card" style="display:flex;gap:12px;align-items:center"><img src="'+A.img.url+'" alt="Picture to check" style="width:64px;height:64px;object-fit:cover;border-radius:12px"><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(A.img.file.name)+'</div><div class="rs">Image • '+(A.img.file.size/1048576).toFixed(1)+' MB</div></div><button class="ib" data-act="au-rm" aria-label="Remove picture" style="font-size:20px">'+I('x','aria-hidden="true"')+'</button></div>':'<button class="th add" data-act="au-add" style="width:100%;height:120px;margin:0 0 14px" aria-label="Choose a picture">'+I('upload','aria-hidden="true" style="font-size:28px"')+'<span>Choose a picture</span></button>';
-var prep=ssWarmPromise&&!ssSession,ready=!!ssSession;
- return vm()+title('Image Authenticity','Check whether a picture may have been generated by AI.')+pick
- +(ready?'<div class="rs" role="status" style="margin:0 0 10px;color:#10A37F">AI detector ready.</div>':(prep?'<div class="rs" role="status" style="margin:0 0 10px">Preparing the AI detector while you choose your picture…</div>':''))
- +'<div class="demo" style="margin:0 0 14px">'+I('info','aria-hidden="true"')+' Your picture stays on this phone. The first check downloads the AI model once (about 44 MB); later checks use the saved copy. Results are estimates, not proof.</div>'
-+prim('Run AI image check','au-start',undefined,!A.img)
-+'<div class="rs" style="text-align:center">JPEG, PNG or WebP • Up to 8 MB • No sign-in needed for the image check</div>';
-}
-function authRemoteResult(R){
-if(R.failed)return title('AI image check','Not completed')+warnBox(esc(R.error||'The detector is not available yet.'),'No result was produced')+sec('Try again','au-start')+sec('Back to chat','chat');
-var score=Math.round(R.aiGeneratedScore*100),color=R.assessment==='strong_ai_signal'?'#F59E0B':R.assessment==='low_ai_signal'?'#10A37F':'#EAB308';
-var label=R.assessment==='strong_ai_signal'?'Strong AI signal':R.assessment==='low_ai_signal'?'Low AI signal':'Uncertain result';
-return title('AI image check','ScamSense on-device model')
-+card('<div style="font-size:20px;font-weight:700;color:'+color+'">'+label+'</div><div style="font-size:30px;font-weight:700;margin:6px 0">'+score+'% AI signal</div><div class="bar"><i style="width:'+score+'%;background:'+color+'"></i></div><div>'+esc(R.explanation||'The detector returned an estimate.')+'</div><div class="rs" style="margin-top:8px">Model: '+esc(R.model||'Detectra v3')+' • Engine: '+esc(R.engine||'on-device')+'</div>')
-+sect('Important limits')+bullets((R.limitations||[]).map(esc))
-+'<div class="rs" style="margin:8px 0 14px">This score is not proof. It does not tell us who is in the picture, who sent it, or whether an account belongs to that person.</div>'
-+prim('Add result to a case','add_auth')+sec('Back to chat','chat')+sec('Check another picture','au-reset');
+return vm()+title('Image Authenticity','Check for hidden content-origin records in a picture.')+pick
++'<div class="demo" style="margin:0 0 14px">'+I('info','aria-hidden="true"')+' Free checks on this device. Your picture is not uploaded. This checks C2PA Content Credentials; it does not yet read every invisible AI watermark.</div>'
++prim('Check picture','au-start',undefined,!A.img)
++'<div class="rs" style="text-align:center">JPEG, PNG, WebP, AVIF or TIFF • Up to 15 MB • No sign-in needed</div>';
 }
 function authResult(){
-var A=S.auth,R=A.res;if(R&&R.provider==='ScamSense On-device')return authRemoteResult(R);
-var key=A.preview||R.cat,C=AUTH_CATS[key],prev=!!A.preview;
-var found=prev?C.sample:R.found;
-var not=C.not.concat(COMMON_NOT);
-var others=Object.keys(AUTH_CATS).filter(function(k){return k!==key}).map(function(k){return '<button class="chip" data-act="au-prev" data-arg="'+k+'" style="height:auto;min-height:40px;padding:6px 14px;text-align:left">'+AUTH_CATS[k].label+'</button>'}).join('');
-return title('File details report',prev?'Sample outcome':'On-device demo scan')
-+(prev?demoBox('Sample outcome. This shows how this result would look. It is not about your picture.'):demoBox('This report only lists basic file markers. It is not an AI-image detection result and cannot confirm whether the picture is real or fake.'))
-+'<div style="height:12px"></div>'
-+'<div style="border:1px solid '+C.color+';background:#0E1A3C;border-radius:16px;padding:14px;margin:0 0 14px;display:flex;gap:12px;align-items:center"><span class="circ" style="background:'+C.color+'">'+I(C.icon,'aria-hidden="true"')+'</span><div><div style="font-size:18px;font-weight:600;line-height:1.3">'+C.label+'</div><div class="rs">'+C.summary+'</div></div></div>'
-+sect('What we found')+bullets(found.map(function(x){return prev?esc(x):x}))
-+sect('What this does NOT prove')+bullets(not)
-+'<div class="rs" style="margin:6px 0 14px">We can’t be certain either way. A picture can be real and still carry odd marks, or be synthetic and carry none.</div>'
-+(prev?sec('Back to my result','au-prev','')+'':'')
-+sect('See how other results look')+'<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px">'+others+'</div>'
-+(prev?'':prim('Add to a case','add_auth')+sec('Trace this picture','pic-trace'))+sec('Back to chat','chat')+sec('Check another picture','au-reset');
+var R=S.auth.res;
+if(R.failed)return title('Image authenticity','Not completed')+warnBox(esc(R.error||'The provenance check could not start.'),'No result was produced')+sec('Try again','au-start')+sec('Back to chat','chat');
+var color=R.status==='ai_record'?'#F59E0B':(R.status==='credentials_warning'?'#DC6B54':(R.status==='credentials_found'?'#0EA5E9':'#64748B'));
+var label=R.status==='ai_record'?'AI creation record found':(R.status==='credentials_warning'?'Credentials need caution':(R.status==='credentials_found'?'Content credentials found':'No supported credentials found'));
+return title('Image authenticity','Free on-device provenance check')
++card('<div style="font-size:20px;font-weight:700;color:'+color+'">'+label+'</div><div style="margin-top:8px">'+esc(R.summary||'The check is complete.')+'</div>')
++sect('What we found')+bullets((R.details||[]).map(esc))
++sect('Important to know')+bullets((R.limitations||[]).map(esc))
++prim('Add result to a case','add_auth')+sec('Back to chat','chat')+sec('Check another picture','au-reset');
 }
-
 /* ----- Feature 4: Money Check ----- */
 Views.money=function(){
 var M=S.money;
@@ -3065,7 +3002,7 @@ Services.auth.analyze(A.img.file,A.img.url).then(function(r){
  A.res=r;A.stage='done';report('auth',r);go('auth');
 }).catch(function(e){
  if(token!==S.runTok)return;
- A.res={provider:'ScamSense On-device',failed:true,error:e&&e.message?e.message:'The on-device detector could not complete the check.',name:A.img.file.name,at:new Date()};
+ A.res={provider:'ScamSense Provenance',failed:true,error:e&&e.message?e.message:'The on-device provenance check could not complete.',name:A.img.file.name,at:new Date()};
  A.stage='done';go('auth');
 });
 },
@@ -3073,7 +3010,7 @@ Services.auth.analyze(A.img.file,A.img.url).then(function(r){
 'au-reset':function(){S.auth={img:null,stage:'setup',res:null,preview:null};go('auth')},
 add_auth:function(){
 var A=S.auth;if(!A.res||!A.img)return;
-var detail=A.res.provider==='ScamSense On-device'?(A.res.assessment+'; AI-generation signal '+Math.round(A.res.aiGeneratedScore*100)+'%. '+(A.res.explanation||'')+' On-device estimate only; not proof.'):'Image check result.';
+var detail=A.res.status?((A.res.summary||'')+' '+(A.res.details||[]).join(' ')+' '+(A.res.limitations||[]).join(' ')):'Image provenance check did not complete.';
 attach([mkItem('picture','user','Picture (for authenticity check)','',{imgUrl:A.img.url,hash:A.img.hash||('sz:'+A.img.file.size)}),mkItem('analysis','ai','Image Authenticity',detail,{kind:'auth'})]);
 },
 /* --- Money Check --- */
@@ -3403,12 +3340,13 @@ nx('auth_pic',!f.done.auth);nx('verify_person',!f.done.verify);
 sum='Image trace ran as a demo. Placeholder results only, no real matches.';title='Picture trace';
 }else if(kind==='auth'){
 f.pic=true;
-var pct=Math.round((d.aiGeneratedScore||0)*100),level=d.assessment==='strong_ai_signal'?'Strong AI signal':(d.assessment==='low_ai_signal'?'Low AI signal':'Uncertain result');
-L=['I’ve run ScamSense’s on-device image detector. Result: **'+level+' ('+pct+'% AI signal)**.','',d.explanation||'This is an estimate, not proof.'];
-L.push('The picture was analysed on this device, not uploaded to an image-detection service.');
-L.push('This does not identify the person or prove who owns an account.');
+var status=d.status||'unknown',label=status==='ai_record'?'AI creation record found':(status==='credentials_warning'?'Content credentials need caution':(status==='credentials_found'?'Content credentials found':'No supported credentials found'));
+L=['ScamSense checked this picture on the device. Result: **'+label+'**.','',d.summary||'The check could not confirm the picture’s origin.'];
+(d.details||[]).forEach(function(x){L.push('• '+x)});
+L.push('This checks C2PA Content Credentials. It does not directly detect Google SynthID or every provider’s invisible watermark. No result does not prove the picture is real.');
+L.push('The picture was not uploaded by ScamSense.');
 nx('trace_pic',!f.done.trace);nx('verify_person',!f.done.verify);
-sum='ScamSense on-device image detector: '+level+' ('+pct+'% AI signal). Estimate only; not proof.';title='Picture authenticity';
+sum='Image provenance check: '+label+'. '+(d.summary||'')+' C2PA credentials only; not a universal AI watermark detector.';title='Picture authenticity';
 }else if(kind==='verify'){
 f.person=true;
 if(d.declined){
