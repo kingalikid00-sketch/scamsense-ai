@@ -2580,13 +2580,23 @@ async function getScamSenseSession(){
   ort.env.wasm.numThreads=window.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||2)):1;
   ort.env.wasm.proxy=false;
   var bytes=await getScamSenseModel(),last=null,tries=[];
-  if(navigator.gpu)tries.push(['webgpu',{executionProviders:['webgpu']}]);
-  tries.push(['wasm',{executionProviders:['wasm']}]);
+  /* Reduce extra memory used while loading the 43.7 MB model on phones. */
+  var leanOptions={enableCpuMemArena:false,enableMemPattern:false,graphOptimizationLevel:'disabled'};
+  if(navigator.gpu)tries.push(['webgpu',Object.assign({executionProviders:['webgpu']},leanOptions)]);
+  tries.push(['wasm',Object.assign({executionProviders:['wasm']},leanOptions)]);
   for(var i=0;i<tries.length;i++){
    try{ssSession=await ort.InferenceSession.create(bytes,tries[i][1]);ssEngine=tries[i][0];break}
    catch(e){last=e}
   }
-  if(!ssSession)throw new Error('This phone could not start the AI model. Try a newer browser or a smaller picture.'+(last&&last.message?' ('+last.message.slice(0,100)+')':''));
+  /* Release the extra JavaScript copy after ONNX Runtime has created its session. */
+  bytes=null;ssModelPromise=null;
+  if(!ssSession){
+   var detail=last&&last.message?last.message:'';
+   if(/failed to allocate a buffer|memory|out of memory/i.test(detail)){
+    throw new Error('Your device ran out of available memory while loading the 44 MB AI model. Close other browser tabs and apps, reload ScamSense, and try again. If it still fails, this device may not have enough memory for this model.');
+   }
+   throw new Error('ScamSense could not start the AI model in this browser. Please update your browser and try again.'+(detail?' ('+detail.slice(0,100)+')':''));
+  }
   return ssSession;
  })().catch(function(e){ssSessionPromise=null;throw e});
  return ssSessionPromise;
