@@ -1083,7 +1083,7 @@ WHEN THEY WANT HELP WITH A POSSIBLE SCAM:
 - Payments: figure out whether they are just talking about money, asking about a real transaction, or describing a suspicious request. If suspicious, say "I'd pause before paying" and list the specific warning signs (pressure, paying first, unusual payment method, secrecy, a story that keeps changing).
 - Messages: look for pressure, urgency, threats, unusual payment requests, requests for passwords or codes, impersonation, fake jobs, fake prizes, fake investments, romance manipulation, fake support, delivery or customs fees, moving the chat elsewhere, secrecy, and suspicious links. Explain the actual evidence in their text.
 - Links: you cannot open pages. The app only checks the text of the address. Say what was checked and what was not (where it leads, how old the site is). Never claim a page is safe or dangerous for sure.
-- Pictures: describe only what you can really see. You cannot run a reverse image search. ScamSense Image Trace is not connected, so never invent matches or sources. Image Authenticity runs a local on-device AI detector when available; describe its result only if the app supplies one, and always call it an estimate, not proof. For AI or edited pictures use: strong signs of AI generation, possible AI editing, signs of ordinary editing, no strong synthetic signals seen, or not enough information. Never say "definitely real" or "definitely fake". A picture matching someone does not mean that person controls the account. You can suggest the user try a public reverse image search such as Google Lens or TinEye themselves.
+- Pictures: describe only what you can really see. You cannot run a reverse image search. ScamSense Image Trace is not connected, so never invent matches or sources. Image Authenticity checks C2PA Content Credentials locally. It does not directly detect Google SynthID or every provider’s invisible watermark. Describe only the result supplied by the app. Missing credentials do not prove an image is real or AI-generated. Never say "definitely real" or "definitely fake". A picture matching someone does not mean that person controls the account. You can suggest the user try a public reverse image search such as Google Lens or TinEye themselves.
 - Verifying a person: ScamSense Verify lets a person voluntarily complete a live check, so the user can see whether a real person took part. It is a demo in this prototype. Keep four things separate: live presence, face similarity, identity, and account ownership. A pass does not prove legal identity or account ownership.
 - Checking a person: ask what they want to check (verify them, their picture, their profile, or what they said) or let them tell you what happened.
 
@@ -2434,7 +2434,7 @@ complete:function(o){return{id:o.id,at:new Date(),demo:true,live:true,consent:tr
 },
 /* Image Trace: real version calls a reverse-image-search provider and returns the same shape. */
 trace:{connected:false,search:function(imgs,alias){return Promise.resolve(demoTrace(imgs,alias))}},
-/* Image Authenticity: local neural-network inference. The picture stays on this device. */
+/* Image Authenticity: local C2PA Content Credentials check. The picture stays on this device. */
 auth:{connected:true,analyze:analyzeLocal},
 /* Money Check: pattern check on this device. A real version could add a payment-risk or account-lookup API. */
 money:{connected:false,analyze:analyzeMoney}
@@ -2556,7 +2556,7 @@ function ssDeepText(value,depth){
  return '';
 }
 async function analyzeLocal(file){
- if(!file||!/^image\/(jpeg|png|webp|avif|tiff)$/.test(file.type||''))throw new Error('Choose a JPEG, PNG, WebP, AVIF or TIFF picture.');
+ if(!file||!/^image\/(jpeg|png|webp)$/.test(file.type||''))throw new Error('Choose a JPEG, PNG or WebP picture.');
  if(file.size>15*1024*1024)throw new Error('Choose a picture smaller than 15 MB.');
  var loaded=await loadScamSenseC2pa(),reader=null,store=null;
  try{
@@ -2605,41 +2605,6 @@ async function analyzeLocal(file){
   'The picture was checked on this device and was not uploaded by ScamSense.'
  ]};
 }
-/* ---------- Image Authenticity demo (metadata scan only) ---------- */
-var AUTH_STEPS=['Loading ScamSense’s on-device AI engine','Preparing the picture','Running the AI model on this phone','Preparing the result'];
-var COMMON_NOT=['Who made the picture or who is shown in it.','Whether the person who sent it is honest.'];
-var AUTH_CATS={
-ai_strong:{label:'AI-tool marker found',color:'#F59E0B',icon:'sparkles',summary:'The file contains text matching the name of an AI image tool. This marker can be added, changed, or removed.',not:['This does not prove the picture was made by AI.','It does not show who made or shared the picture.'],sample:['A text marker matching an AI image tool was found.','The marker has not been independently verified.']},
-ai_edit:{label:'Possible AI-editing marker found',color:'#F59E0B',icon:'sparkles',summary:'The file contains text that may refer to an AI editing feature. This is only a clue.',not:['This does not prove AI editing took place.','It does not show what was changed or why.'],sample:['A text marker matching an AI editing feature was found.','The marker has not been independently verified.']},
-conv:{label:'Editing-software marker found',color:'#0EA5E9',icon:'image',summary:'The file contains text matching photo-editing software. Many normal pictures are edited, so this does not mean the picture is fake.',not:['This does not prove the picture is misleading.','It does not show what was changed.'],sample:['A text marker matching photo-editing software was found.','The marker has not been independently verified.']},
-none:{label:'Camera or content marker found',color:'#10A37F',icon:'info',summary:'The file contains a basic camera or content-related marker. This does not prove the picture is genuine or untouched.',not:['This does not prove the picture is real.','It does not prove the picture has not been edited.'],sample:['A basic camera or content-related marker was found.','The marker has not been independently verified.']},
-unknown:{label:'No useful markers found',color:'#64748B',icon:'help-circle',summary:'This quick scan did not find the markers it knows about. Many apps remove file details when pictures are shared.',not:['This does not mean the picture is real.','This does not mean the picture is AI-generated.'],sample:['No recognised markers were found.','This is common with screenshots and images saved from social apps.']}
-};
-async function analyzeMeta(file,url){
-var buf=await file.arrayBuffer(),u=new Uint8Array(buf);
-function str(a){var o='',c=8192;for(var i=0;i<a.length;i+=c)o+=String.fromCharCode.apply(null,a.subarray(i,i+c));return o}
-var txt=str(u.subarray(0,Math.min(u.length,300000)))+(u.length>300000?str(u.subarray(Math.max(300000,u.length-60000))):'');
-var low=txt.toLowerCase();
-function has(a){return a.filter(function(k){return low.indexOf(k)>-1})}
-var ai=has(['trainedalgorithmicmedia','midjourney','dall-e','stable diffusion','comfyui','automatic1111','novelai']);
-if(low.indexOf('sampler:')>-1&&low.indexOf('steps:')>-1)ai.push('generation settings text');
-var aiEdit=has(['compositewithtrainedalgorithmicmedia','generative fill','adobe firefly','firefly']);
-var conv=has(['photoshop','lightroom','gimp','snapseed','pixelmator','affinity photo','canva','picsart','facetune','meitu','capture one']);
-var c2pa=low.indexOf('c2pa')>-1||low.indexOf('jumbf')>-1;
-var exif=txt.indexOf('Exif\\u0000\\u0000')>-1;
-var dims=await new Promise(function(r){var im=new Image();im.onload=function(){r([im.naturalWidth,im.naturalHeight])};im.onerror=function(){r(null)};im.src=url});
-var found=[],cat;
-found.push('File type: '+esc(file.type||'not identified')+'. File size: '+(file.size/1048576).toFixed(2)+' MB'+(dims?', image size: '+dims[0]+' × '+dims[1]+' pixels':'')+'.');
-if(ai.length)found.push('Text matching an AI image-tool name was found ('+esc(ai.join(', '))+'). This scan cannot confirm whether the marker is genuine.');
-if(aiEdit.length)found.push('Text matching an AI-editing feature was found ('+esc(aiEdit.join(', '))+'). This scan cannot confirm whether the marker is genuine.');
-if(conv.length)found.push('Text matching photo-editing software was found ('+esc(conv.join(', '))+'). This does not show what edits were made.');
-if(c2pa)found.push('A text marker associated with C2PA/JUMBF was found. This demo does not validate content credentials or their signature.');
-if(exif)found.push('A basic EXIF marker was found. This does not confirm that the camera details are genuine.');
-if(!exif&&!c2pa&&!ai.length&&!aiEdit.length&&!conv.length)found.push('No recognised text markers were found. Image apps often remove these details when saving or sharing pictures.');
-if(ai.length)cat='ai_strong';else if(aiEdit.length)cat='ai_edit';else if(conv.length)cat='conv';else if(exif||c2pa)cat='none';else cat='unknown';
-return{cat:cat,found:found,name:file.name,at:new Date(),demo:true};
-}
-
 /* ---------- Case engine ---------- */
 var ITEM_TYPES={message:{label:'Message',icon:'message-circle',ph:'Paste a message they sent you'},picture:{label:'Picture',icon:'photo',ph:''},link:{label:'Link',icon:'link',ph:'Paste a link'},profile:{label:'Profile info',icon:'id',ph:'What you can see on their profile: name, bio, anything odd'},payment:{label:'Payment request',icon:'coin',ph:'What are they asking you to pay, and how?'},note:{label:'Note',icon:'file-text',ph:'Write your own note'},analysis:{label:'Analysis',icon:'shield-check',ph:''}};
 var SRC_TAG={user:'<span class="tag" style="background:#102A5C;color:#9DBBFF">YOU PROVIDED</span>',ai:'<span class="tag" style="background:#0B3A36;color:#3DF0D0">SCAMSENSE ANALYSIS</span>',demo:'<span class="tag">DEMO RESULT</span>'};
@@ -2799,7 +2764,7 @@ var pick=A.img?'<div class="card" style="display:flex;gap:12px;align-items:cente
 return vm()+title('Image Authenticity','Check for hidden content-origin records in a picture.')+pick
 +'<div class="demo" style="margin:0 0 14px">'+I('info','aria-hidden="true"')+' Free checks on this device. Your picture is not uploaded. This checks C2PA Content Credentials; it does not yet read every invisible AI watermark.</div>'
 +prim('Check picture','au-start',undefined,!A.img)
-+'<div class="rs" style="text-align:center">JPEG, PNG, WebP, AVIF or TIFF • Up to 15 MB • No sign-in needed</div>';
++'<div class="rs" style="text-align:center">JPEG, PNG or WebP • Up to 15 MB • No sign-in needed</div>';
 }
 function authResult(){
 var R=S.auth.res;
