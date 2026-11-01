@@ -1136,6 +1136,7 @@ async function handleChatImage(request, env, origin) {
  }
  async function ensureVerifyLocationTable(env) {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS verification_locations (request_id TEXT PRIMARY KEY, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_m REAL, shared_at TEXT NOT NULL, expires_at TEXT NOT NULL)").run();
+  await env.DB.prepare("DELETE FROM verification_locations WHERE expires_at <= ?").bind(new Date().toISOString()).run();
 }
 async function readVerifyLocation(env, requestId) {
   try {
