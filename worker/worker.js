@@ -1125,7 +1125,7 @@ async function handleChatImage(request, env, origin) {
      console.error("Live Identity Check: could not save request");
      return json({ error: "We could not create the request. Please try again." }, 500, origin);
    }
-   const link = "https://kingalikid00-sketch.github.io/scamsense-ai/?live-check=" + encodeURIComponent(token);
+   const link = "https://kingalikid00-sketch.github.io/scamsense-ai/live-check.html?token=" + encodeURIComponent(token);
    return json({ request_id: id, link, expires_at: expires.toISOString(), expires_in_minutes: 30, status: "pending",
      note: "This link records consent only. It does not confirm identity or detect a live person." }, 201, origin);
  }
