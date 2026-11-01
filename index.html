@@ -2740,8 +2740,24 @@ async function analyzeLocal(file){
  ]};
 }
 async function analyzeImageAuthenticity(file){
- var detector=await runSSImageDetector(file);
- return {detector:detector,name:file.name,at:new Date()};
+ /* Run the visual model and the signed C2PA record check independently.
+    A failure in one check must not hide a successful result from the other. */
+ var checks=await Promise.allSettled([runSSImageDetector(file),analyzeLocal(file)]);
+ var detector=checks[0].status==='fulfilled'?checks[0].value:null;
+ var provenance=checks[1].status==='fulfilled'?checks[1].value:{
+  status:'failed',
+  error:checks[1].reason&&checks[1].reason.message?checks[1].reason.message:'The digital record could not be checked.'
+ };
+ if(!detector&&provenance.status==='failed'){
+  throw new Error('Neither image check could finish. Please check your connection and try again.');
+ }
+ return {
+  detector:detector,
+  provenance:provenance,
+  detectorError:checks[0].status==='rejected'?(checks[0].reason&&checks[0].reason.message||'The visual picture check could not finish.'):null,
+  name:file.name,
+  at:new Date()
+ };
 }
 /* ---------- Case engine ---------- */
 var ITEM_TYPES={message:{label:'Message',icon:'message-circle',ph:'Paste a message they sent you'},picture:{label:'Picture',icon:'photo',ph:''},link:{label:'Link',icon:'link',ph:'Paste a link'},profile:{label:'Profile info',icon:'id',ph:'What you can see on their profile: name, bio, anything odd'},payment:{label:'Payment request',icon:'coin',ph:'What are they asking you to pay, and how?'},note:{label:'Note',icon:'file-text',ph:'Write your own note'},analysis:{label:'Analysis',icon:'shield-check',ph:''}};
@@ -2905,15 +2921,29 @@ return vm()+title('Image Authenticity','Check whether a picture may be AI-genera
 +'<div class="rs" style="text-align:center">JPEG, PNG or WebP • Up to 15 MB • No sign-in needed</div>';
 }
 function authResult(){
-var R=S.auth.res,D=R.detector;
+var R=S.auth.res,D=R.detector,P=R.provenance;
 if(R.failed)return title('Image Authenticity','')+card('<div style="font-size:20px;font-weight:700">Check failed</div><div class="rs" style="margin-top:8px">'+esc(R.error||'The picture could not be checked. Please try again.')+'</div>')+sec('Try again','au-start')+sec('Back to chat','chat');
 var pct=D?Math.max(0,Math.min(100,D.pct)):null;
 var color=pct===null?'#94A3B8':(pct>=65?'#F59E0B':(pct>=25?'#0EA5E9':'#10B981'));
-var result=pct===null?'We couldn’t read this picture. Please try again.':(pct>=65?'This picture looks more like AI than a real photo.':(pct>=25?'This picture has some signs of AI.':'This picture looks more like a real photo than AI.'));
-return '<div style="padding:28px 8px 18px;text-align:center">'+
-(pct===null?'':'<div style="font-size:34px;font-weight:800;line-height:1.2;color:'+color+';margin-bottom:10px">'+pct+'% AI</div>')+
-'<div style="font-size:20px;font-weight:700;line-height:1.35;color:'+color+'">'+result+'</div>'+
-'<div class="rs" style="margin-top:12px">This is an estimate, not proof.</div></div>'+
+var result=pct===null?'The visual picture check could not finish.':(pct>=65?'This picture looks more like AI than a real photo.':(pct>=25?'This picture has some signs of AI.':'This picture looks more like a real photo than AI.'));
+var pTitle='No supported Content Credentials found';
+var pText='We couldn’t find a C2PA creator record in this file. That does not prove the picture is real or human-made.';
+var pColor='#8FA0C8';
+if(P&&P.status==='ai_record'){pTitle='AI-generation record found';pText=P.summary||'The signed picture record describes AI-generated or AI-assisted content.';pColor='#F5C56B'}
+else if(P&&P.status==='credentials_warning'){pTitle='Picture record needs caution';pText=P.summary||'A record was found, but its validation information includes a warning.';pColor='#FF8A8A'}
+else if(P&&P.status==='credentials_found'){pTitle='Content Credentials found';pText=P.summary||'A creator record was found, but it does not clearly say AI was used.';pColor='#4D9BFF'}
+else if(P&&P.status==='failed'){pTitle='Could not check Content Credentials';pText=P.error||'The digital record check could not finish.'}
+else if(P&&P.status==='unsupported'){pTitle='This picture format is not supported for records';pText='The visual picture check may still work.'}
+var pDetails='';
+if(P&&P.issuer)pDetails+='<div class="kv"><span>Record issuer</span><span>'+esc(P.issuer)+'</span></div>';
+if(P&&P.generator)pDetails+='<div class="kv"><span>Creator software</span><span>'+esc(P.generator)+'</span></div>';
+if(P&&P.details&&P.details.length)pDetails+='<div style="margin-top:8px;font-size:13px;color:var(--cm-body,#8FA0C8)">'+P.details.map(function(x){return '<div style="margin:4px 0">• '+esc(x)+'</div>'}).join('')+'</div>';
+return '<div style="padding:22px 8px 14px;text-align:center">'+
+(pct===null?'<div style="font-size:18px;font-weight:700;color:#94A3B8">Visual check unavailable</div>':'<div style="font-size:34px;font-weight:800;line-height:1.2;color:'+color+';margin-bottom:10px">'+pct+'% AI-like signals</div>')+
+'<div style="font-size:19px;font-weight:700;line-height:1.35;color:'+color+'">'+result+'</div>'+
+'<div class="rs" style="margin-top:10px">The visual score is an estimate, not proof.</div></div>'+
+card('<div style="font-size:17px;font-weight:700;margin-bottom:8px">Digital origin record</div><div style="font-size:16px;font-weight:700;color:'+pColor+'">'+esc(pTitle)+'</div><div style="font-size:14px;line-height:1.5;margin-top:6px">'+esc(pText)+'</div>'+pDetails+'<div class="rs" style="margin-top:10px">This checks signed C2PA Content Credentials. It does not detect every invisible watermark, including all SynthID signals. Sharing or editing can remove credentials.</div>')+
+'<div class="rs" style="margin:0 0 14px;text-align:center">No record found does not mean the picture is human-made.</div>'+
 '<div style="margin-top:18px">'+prim('Check another picture','au-reset')+sec('Back to chat','chat')+'</div>';
 }
 /* ----- Feature 4: Money Check ----- */
