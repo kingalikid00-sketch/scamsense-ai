@@ -2568,7 +2568,7 @@ return{demo:true,alias:alias||'',matches:out,count:imgs.length,ran:new Date()};
 /* ---------- ScamSense Image Provenance: local C2PA reader ---------- */
 /* This reads signed Content Credentials in the selected file. It does not claim to detect every AI watermark. */
 var ssC2paPromise=null;
-var AUTH_STEPS=['Preparing the picture checker','Checking the picture on this device','Reading creator records'];
+var AUTH_STEPS=['Preparing the picture checker','Checking the picture','Calculating the result'];
 /* Local PE-Core Tiny image signal model. Android serves the bundled APK asset;
    the website fetches the same verified model from the ScamSense Worker. */
 var SS_MODEL_URL='https://scamsense-ai.kingalikid00.workers.dev/detector-model';
@@ -2707,21 +2707,8 @@ async function analyzeLocal(file){
  ]};
 }
 async function analyzeImageAuthenticity(file){
- var results=await Promise.allSettled([analyzeLocal(file),runSSImageDetector(file)]);
- var provenance=results[0].status==='fulfilled'?results[0].value:{provider:'ScamSense Provenance',failed:true,error:results[0].reason&&results[0].reason.message||'Content record check could not finish.'};
- var detector=results[1].status==='fulfilled'?results[1].value:null;
- var detectorError=results[1].status==='rejected'?(results[1].reason&&results[1].reason.message||'AI signal check could not finish.'):null;
- if(provenance.failed&&!detector)throw new Error((provenance.error||'Content record check failed.')+' '+(detectorError||''));
- if(provenance.failed){provenance.provenanceError=provenance.error;provenance.failed=false;provenance.status='not_found';provenance.summary='The content-record check could not finish.';provenance.details=[]}
- provenance.detector=detector;
- provenance.detectorError=detectorError;
- provenance.name=file.name;
- provenance.at=new Date();
- provenance.limitations=(provenance.limitations||[]).concat([
-  'The AI signal score is an estimate from a small model, not proof. It was mainly tested on face images, so other picture types may be less reliable.',
-  'A low score does not prove a picture is genuine. A high score does not prove it was made with AI.'
- ]);
- return provenance;
+ var detector=await runSSImageDetector(file);
+ return {detector:detector,name:file.name,at:new Date()};
 }
 /* ---------- Case engine ---------- */
 var ITEM_TYPES={message:{label:'Message',icon:'message-circle',ph:'Paste a message they sent you'},picture:{label:'Picture',icon:'photo',ph:''},link:{label:'Link',icon:'link',ph:'Paste a link'},profile:{label:'Profile info',icon:'id',ph:'What you can see on their profile: name, bio, anything odd'},payment:{label:'Payment request',icon:'coin',ph:'What are they asking you to pay, and how?'},note:{label:'Note',icon:'file-text',ph:'Write your own note'},analysis:{label:'Analysis',icon:'shield-check',ph:''}};
@@ -2876,11 +2863,11 @@ return title('Trace results','Demo results')
 /* ----- Feature 3: Image Authenticity ----- */
 Views.auth=function(){
 var A=S.auth;
-if(A.stage==='run')return title('Checking your picture','Please wait')+demoBox('ScamSense is checking the picture’s content credentials on this device. The picture is not uploaded.')+'<div style="height:14px"></div>'+stepsView(AUTH_STEPS,S.stepIdx||0);
+if(A.stage==='run')return title('Checking your picture','Please wait')+demoBox('ScamSense is checking the picture on this device.')+'<div style="height:14px"></div>'+stepsView(AUTH_STEPS,S.stepIdx||0);
 if(A.stage==='done'&&A.res)return authResult();
 var pick=A.img?'<div class="card" style="display:flex;gap:12px;align-items:center"><img src="'+A.img.url+'" alt="Picture to check" style="width:64px;height:64px;object-fit:cover;border-radius:12px"><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(A.img.file.name)+'</div><div class="rs">Image • '+(A.img.file.size/1048576).toFixed(1)+' MB</div></div><button class="ib" data-act="au-rm" aria-label="Remove picture" style="font-size:20px">'+I('x','aria-hidden="true"')+'</button></div>':'<button class="th add" data-act="au-add" style="width:100%;height:120px;margin:0 0 14px" aria-label="Choose a picture">'+I('upload','aria-hidden="true" style="font-size:28px"')+'<span>Choose a picture</span></button>';
-return vm()+title('Image Authenticity','Check for hidden content-origin records in a picture.')+pick
-+'<div class="demo" style="margin:0 0 14px">'+I('info','aria-hidden="true"')+' Checks signed creator records and estimates AI-like picture signals. First setup may download the small model once. Your picture stays on this device. This is an estimate, not proof.</div>'
+return vm()+title('Image Authenticity','Check whether a picture may be AI-generated.')+pick
++'<div class="demo" style="margin:0 0 14px">'+I('info','aria-hidden="true"')+' Checks the picture on this device. The picture is not uploaded.</div>'
 +prim('Check picture','au-start',undefined,!A.img)
 +'<div class="rs" style="text-align:center">JPEG, PNG or WebP • Up to 15 MB • No sign-in needed</div>';
 }
@@ -3093,7 +3080,7 @@ Services.auth.analyze(A.img.file,A.img.url).then(function(r){
 }).catch(function(e){
  clearInterval(progressTimer);
  if(token!==S.runTok)return;
- A.res={provider:'ScamSense Provenance',failed:true,error:e&&e.message?e.message:'The on-device provenance check could not complete.',name:A.img.file.name,at:new Date()};
+ A.res={failed:true,error:e&&e.message?e.message:'The picture could not be checked.'};
  A.stage='done';go('auth');
 });
 },
@@ -3101,7 +3088,7 @@ Services.auth.analyze(A.img.file,A.img.url).then(function(r){
 'au-reset':function(){S.auth={img:null,stage:'setup',res:null,preview:null};go('auth')},
 add_auth:function(){
 var A=S.auth;if(!A.res||!A.img)return;
-var detail=(A.res.status?((A.res.summary||'')+' '+(A.res.details||[]).join(' ')):'Image provenance check did not complete.')+(A.res.detector?(' AI signal estimate: '+A.res.detector.pct+'%. '+A.res.detector.label+'.'):(' AI signal check unavailable: '+(A.res.detectorError||'not completed')+'.'))+' '+(A.res.limitations||[]).join(' ');
+var detail=A.res.detector?(A.res.detector.pct+'% AI-generated; '+(100-A.res.detector.pct)+'% likely not AI-generated.'):'AI image estimate unavailable.';
 attach([mkItem('picture','user','Picture (for authenticity check)','',{imgUrl:A.img.url,hash:A.img.hash||('sz:'+A.img.file.size)}),mkItem('analysis','ai','Image Authenticity',detail,{kind:'auth'})]);
 },
 /* --- Money Check --- */
