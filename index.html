@@ -2532,7 +2532,7 @@ return{demo:true,alias:alias||'',matches:out,count:imgs.length,ran:new Date()};
 
 /* ---------- Image Authenticity: server-side AI detector ---------- */
 async function analyzeRemote(file){
-  if(!file || !/^image\\/(jpeg|png|webp)$/.test(file.type||''))throw new Error('Choose a JPEG, PNG or WebP picture.');
+  if(!file || !/^image\/(jpeg|png|webp)$/.test(file.type||''))throw new Error('Choose a JPEG, PNG or WebP picture.');
   if(file.size>1000000)throw new Error('Choose a picture smaller than 1 MB.');
   var dataUrl=await new Promise(function(resolve,reject){var reader=new FileReader();reader.onload=function(){resolve(reader.result)};reader.onerror=function(){reject(new Error('The picture could not be read.'))};reader.readAsDataURL(file)});
   var response=await Billing.api('/connect/ai-authenticity',{image:dataUrl,mime_type:file.type,kind:'profile_picture'});
