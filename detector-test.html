@@ -38,6 +38,7 @@
 <script>
 (function(){
 'use strict';
+try{indexedDB.deleteDatabase('scamsense-sieve-test')}catch(e){}
 const MODEL_URL='https://scamsense-ai.kingalikid00.workers.dev/detector-model';
 const MODEL_SHA='87cf796d2ca7cd20039e17c4be40ff4559f58d16d29410e38e3fb8234e60c10e';
 const META={input_size:256};
