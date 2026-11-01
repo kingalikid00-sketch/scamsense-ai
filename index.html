@@ -2888,10 +2888,11 @@ var R=S.auth.res,D=R.detector;
 if(R.failed)return title('Image Authenticity','')+card('<div style="font-size:20px;font-weight:700">Check failed</div><div class="rs" style="margin-top:8px">'+esc(R.error||'The picture could not be checked. Please try again.')+'</div>')+sec('Try again','au-start')+sec('Back to chat','chat');
 var pct=D?Math.max(0,Math.min(100,D.pct)):null;
 var color=pct===null?'#94A3B8':(pct>=65?'#F59E0B':(pct>=25?'#0EA5E9':'#10B981'));
-var result=pct===null?'We couldn’t read this picture. Please try again.':(pct>=65?'This picture has several signs of being made with AI.':(pct>=25?'We found a few signs this picture may have been made with AI.':'We found little sign that this picture was made with AI.'));
+var result=pct===null?'We couldn’t read this picture. Please try again.':(pct>=65?'This picture looks more like AI than a real photo.':(pct>=25?'This picture has some signs of AI.':'This picture looks more like a real photo than AI.'));
 return '<div style="padding:28px 8px 18px;text-align:center">'+
-'<div style="font-size:24px;font-weight:700;line-height:1.35;color:'+color+'">'+result+'</div>'+
-'<div class="rs" style="margin-top:12px">We couldn’t tell which AI tool made it.</div></div>'+
+(pct===null?'':'<div style="font-size:34px;font-weight:800;line-height:1.2;color:'+color+';margin-bottom:10px">'+pct+'% AI</div>')+
+'<div style="font-size:20px;font-weight:700;line-height:1.35;color:'+color+'">'+result+'</div>'+
+'<div class="rs" style="margin-top:12px">This is an estimate, not proof.</div></div>'+
 '<div style="margin-top:18px">'+prim('Check another picture','au-reset')+sec('Back to chat','chat')+'</div>';
 }
 /* ----- Feature 4: Money Check ----- */
@@ -3098,7 +3099,7 @@ Services.auth.analyze(A.img.file,A.img.url).then(function(r){
 'au-reset':function(){S.auth={img:null,stage:'setup',res:null,preview:null};go('auth')},
 add_auth:function(){
 var A=S.auth;if(!A.res||!A.img)return;
-var q=A.res.detector?A.res.detector.pct:null;var detail=q===null?'We couldn’t get a clear result from the picture scan.':(q>=65?'The picture has several signs of being made with AI.':(q>=25?'The scan found a few signs the picture may have been made with AI.':'The scan found little sign that the picture was made with AI.'))+' We couldn’t tell which AI tool made it.';
+var q=A.res.detector?A.res.detector.pct:null;var detail=q===null?'We couldn’t get a clear result from the picture scan.':(q+'% AI. '+(q>=65?'This picture looks more like AI than a real photo.':(q>=25?'This picture has some signs of AI.':'This picture looks more like a real photo than AI.'))+' This is an estimate, not proof.');
 attach([mkItem('picture','user','Picture (for authenticity check)','',{imgUrl:A.img.url,hash:A.img.hash||('sz:'+A.img.file.size)}),mkItem('analysis','ai','Image Authenticity',detail,{kind:'auth'})]);
 },
 /* --- Money Check --- */
