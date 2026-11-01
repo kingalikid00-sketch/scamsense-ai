@@ -956,6 +956,8 @@ button:focus-visible,[role=button]:focus-visible,input:focus-visible,textarea:fo
 .ib,.cm-dots,.cm-send,.cm-n{ -webkit-user-select:none;user-select:none}
 .settings-screen,.saved-screen{animation:ssScreenIn 180ms ease-out both}
 @keyframes ssScreenIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.auth-reveal{opacity:0;animation:ssScreenIn .38s ease-out forwards;will-change:opacity,transform}
+@media(prefers-reduced-motion:reduce){.auth-reveal{animation:none;opacity:1}}
 .ss-switch{width:50px;height:30px;padding:3px}
 .ss-switch i{width:24px;height:24px}
 .ss-switch.active i,.ss-switch[aria-pressed=true] i{transform:translateX(20px)}
@@ -2768,14 +2770,20 @@ return vm()+title('Image Authenticity','Check for hidden content-origin records 
 }
 function authResult(){
 var R=S.auth.res;
-if(R.failed)return title('Image authenticity','Not completed')+warnBox(esc(R.error||'The provenance check could not start.'),'No result was produced')+sec('Try again','au-start')+sec('Back to chat','chat');
-var color=R.status==='ai_record'?'#F59E0B':(R.status==='credentials_warning'?'#DC6B54':(R.status==='credentials_found'?'#0EA5E9':'#64748B'));
-var label=R.status==='ai_record'?'AI creation record found':(R.status==='credentials_warning'?'Credentials need caution':(R.status==='credentials_found'?'Content credentials found':'No supported credentials found'));
-return title('Image authenticity','Free on-device provenance check')
-+card('<div style="font-size:20px;font-weight:700;color:'+color+'">'+label+'</div><div style="margin-top:8px">'+esc(R.summary||'The check is complete.')+'</div>')
-+sect('What we found')+bullets((R.details||[]).map(esc))
-+sect('Important to know')+bullets((R.limitations||[]).map(esc))
-+prim('Add result to a case','add_auth')+sec('Back to chat','chat')+sec('Check another picture','au-reset');
+if(R.failed)return title('Image authenticity','Not completed')+warnBox(esc(R.error||'We could not check this picture. Please try again.'),'Check not completed')+sec('Try again','au-start')+sec('Back to chat','chat');
+var warning=R.status==='credentials_warning';
+var ai=R.status==='ai_record';
+var found=warning||ai||R.status==='credentials_found';
+var label=warning?'AI record found — not verified':(ai?'AI record found':(R.status==='credentials_found'?'Picture record found':'No record found'));
+var color=warning?'#DC6B54':(ai?'#F59E0B':(found?'#0EA5E9':'#64748B'));
+var message=warning?'This picture has a record saying AI was used. But its digital signature could not be trusted.':(ai?'The picture’s record says it was made or changed with AI.':(R.status==='credentials_found'?'A picture record was found, but it does not clearly say AI was used.':'We found no supported picture record. That does not mean the picture is real.'));
+var source=R.issuer?'Record says: '+R.issuer:(R.generator?'Created with: '+R.generator:'');
+return title('Image Authenticity','Check complete')
++'<div class="auth-reveal">'+card('<div style="font-size:19px;font-weight:700;color:'+color+'">'+label+'</div><div style="margin-top:8px;line-height:1.5">'+esc(message)+'</div>')+'</div>'
++(source?'<div class="rs auth-reveal" style="padding:12px 2px;animation-delay:.10s">'+esc(source)+'</div>':'')
++'<div class="card auth-reveal" style="margin-top:8px;animation-delay:.18s"><b>Remember</b><div style="margin-top:6px;line-height:1.5">A missing record does not prove a picture is real. This check does not identify the person in it.</div></div>'
++'<div class="rs auth-reveal" style="margin:12px 0;animation-delay:.26s">Checked on this device. Your picture was not uploaded.</div>'
++'<div class="auth-reveal" style="animation-delay:.32s">'+prim('Add result to a case','add_auth')+sec('Back to chat','chat')+sec('Check another picture','au-reset')+'</div>';
 }
 /* ----- Feature 4: Money Check ----- */
 Views.money=function(){
@@ -2962,10 +2970,16 @@ attach(items);
 'au-start':function(){
 var A=S.auth;if(!A.img||A.stage==='run')return;
 A.stage='run';A.res=null;A.preview=null;S.stepIdx=0;var token=++S.runTok;render();
+var progressTimer=setInterval(function(){
+ if(token!==S.runTok||A.stage!=='run'){clearInterval(progressTimer);return}
+ S.stepIdx=Math.min((S.stepIdx||0)+1,AUTH_STEPS.length);render();
+},320);
 Services.auth.analyze(A.img.file,A.img.url).then(function(r){
+ clearInterval(progressTimer);
  if(token!==S.runTok)return;
  A.res=r;A.stage='done';report('auth',r);go('auth');
 }).catch(function(e){
+ clearInterval(progressTimer);
  if(token!==S.runTok)return;
  A.res={provider:'ScamSense Provenance',failed:true,error:e&&e.message?e.message:'The on-device provenance check could not complete.',name:A.img.file.name,at:new Date()};
  A.stage='done';go('auth');
