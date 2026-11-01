@@ -2885,23 +2885,17 @@ return vm()+title('Image Authenticity','Check for hidden content-origin records 
 +'<div class="rs" style="text-align:center">JPEG, PNG or WebP • Up to 15 MB • No sign-in needed</div>';
 }
 function authResult(){
-var R=S.auth.res;
-if(R.failed)return title('Image authenticity','Not completed')+warnBox(esc(R.error||'We could not check this picture. Please try again.'),'Check not completed')+sec('Try again','au-start')+sec('Back to chat','chat');
-var warning=R.status==='credentials_warning';
-var ai=R.status==='ai_record';
-var found=warning||ai||R.status==='credentials_found';
-var label=R.provenanceError?'Content record check unavailable':(warning?'AI details found — not verified':(ai?'AI details found':(R.status==='credentials_found'?'Creator details found':'No creator details found')));
-var color=warning?'#DC6B54':(ai?'#F59E0B':(found?'#0EA5E9':'#64748B'));
-var message=R.provenanceError?'The signed content-record check could not finish. The AI signal result below is separate.':(warning?'The picture has a note saying AI was used, but we could not verify that note.':(ai?'The picture’s creator record says AI was used.':(R.status==='credentials_found'?'We found creator details, but they do not say AI was used.':'This picture has no supported creator record. That is common with pictures shared online. This check cannot tell whether the picture is real or AI-made.')));
-var source=R.issuer?'Record says: '+R.issuer:(R.generator?'Created with: '+R.generator:'');
-var D=R.detector,detectorHtml=D?('<div class="auth-reveal" style="margin:12px 0">'+card('<div style="font-size:18px;font-weight:700;color:'+(D.score>=.65?'#F59E0B':(D.score>=.25?'#0EA5E9':'#10B981'))+'">'+esc(D.label)+'</div><div style="margin-top:8px">Model estimate: '+D.pct+'% AI signal.</div><div class="rs" style="margin-top:8px">This is an estimate, not proof. The small model was mainly tested on face pictures, so other types may be less reliable.</div>')+'</div>'):(R.detectorError?'<div class="rs auth-reveal" style="margin:12px 0">AI signal check unavailable: '+esc(R.detectorError)+'</div>':'');
-return title('Image Authenticity','Check complete')
-+'<div class="auth-reveal">'+card('<div style="font-size:19px;font-weight:700;color:'+color+'">'+label+'</div><div style="margin-top:8px;line-height:1.5">'+esc(message)+'</div>')+'</div>'
-+detectorHtml
-+(R.provenanceError?'<div class="rs auth-reveal" style="padding:8px 2px">'+esc(R.provenanceError)+'</div>':(source?'<div class="rs auth-reveal" style="padding:12px 2px;animation-delay:.10s">'+esc(source)+'</div>':''))
-+'<div class="rs auth-reveal" style="margin:12px 0;animation-delay:.18s">The first result checks signed creator records. The AI signal is a separate pixel-based estimate. Neither result identifies anyone.</div>'
-+'<div class="rs auth-reveal" style="margin:12px 0;animation-delay:.26s">Both checks run on this device. Your picture is not uploaded.</div>'
-+'<div class="auth-reveal" style="animation-delay:.32s">'+prim('Add result to a case','add_auth')+sec('Back to chat','chat')+sec('Check another picture','au-reset')+'</div>';
+var R=S.auth.res,D=R.detector;
+if(R.failed)return title('Image Authenticity','')+card('<div style="font-size:20px;font-weight:700">Check failed</div>')+sec('Try again','au-start')+sec('Back to chat','chat');
+var pct=D?Math.max(0,Math.min(100,D.pct)):null;
+var color=pct===null?'#94A3B8':(pct>=65?'#F59E0B':(pct>=25?'#0EA5E9':'#10B981'));
+var result=pct===null?'AI estimate unavailable':(pct+'% AI-generated');
+var sub=pct===null?'Please try again.':((100-pct)+'% no AI signal');
+return '<div style="padding:28px 8px 18px;text-align:center">'+
+'<div style="font-size:32px;font-weight:800;line-height:1.2;color:'+color+'">'+result+'</div>'+
+'<div style="font-size:18px;margin-top:10px;color:var(--cm-body,#C9D6F5)">'+sub+'</div>'+
+'<div class="rs" style="margin-top:8px">Estimate only</div></div>'+
+'<div style="margin-top:18px">'+prim('Check another picture','au-reset')+sec('Back to chat','chat')+'</div>';
 }
 /* ----- Feature 4: Money Check ----- */
 Views.money=function(){
