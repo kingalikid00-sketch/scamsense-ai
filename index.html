@@ -1756,7 +1756,7 @@ link_mention:'They shared a link in passing. Do not assume they want it checked 
 check_picture:'A picture is attached and they want it checked. If they are asking whether the person in it is real, treat it as a question about that person and say what you can and cannot tell from one picture. Describe only what you actually see (text, logos, chat screenshots, payment requests). If it is a screenshot of a message, analyze that message. Say what you cannot verify. Use the analysis format.',
 check_picture_ask:'They want a picture checked but nothing is attached. Ask them to add it with the picture button, and ask where they got it if that would help. Short.',
 image_trace:'They want to know if this picture is used elsewhere. ScamSense Image Trace is not connected in this prototype and you cannot search the web. Say so plainly, describe what you can see, suggest they try a public reverse image search (Google Lens or TinEye), and ask where they got the picture. Do not invent any match or source.',
-image_auth:'They ask whether this picture is AI-generated or edited. ScamSense Image Authenticity is not connected in this prototype and you cannot run a real detector. Mention only visible clues, use the careful outcome wording, and say it is not proof either way.',
+image_auth:'They ask whether this picture is AI-generated or edited. ScamSense Image Authenticity uses an on-device Detectra model when the user runs the dedicated image check. Do not claim you personally analysed the image from chat alone. Explain that the dedicated check gives an estimate, not proof, and mention that the picture stays on the device. is not proof either way.',
 check_person:'They want to check a person. Ask what they would like to check about this person (verify them, check their picture, check their profile, or check what they said) or invite them to tell you what happened. Keep it short and add actions:verify_person,check_picture,check_message.',
 verify_person:'They want to verify a person. Explain ScamSense Verify simply: the other person can voluntarily complete a live check so the user can see whether a real person completed it. Keep live presence, face similarity, identity, and account ownership separate, and say it does not prove legal identity or account ownership. It is a demo in this prototype. Add actions:verify_person.',
 person_story:'They mention a person they met or know and may be worried. Respond naturally and gently with ONE simple question to draw out the story (how they know the person, or what happened next). Do not analyze yet unless there is already enough. Do not call anyone a scammer.',
@@ -2537,7 +2537,7 @@ var SS_MODEL_CACHE='scamsense-image-model-v1';
 var SS_MODEL_BYTES=43684258;
 var SS_ORT_URL='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.2/dist/ort.webgpu.min.js';
 var SS_ORT_WASM='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.2/dist/';
-var ssOrtPromise=null,ssModelPromise=null,ssSessionPromise=null,ssSession=null,ssEngine='';
+var ssOrtPromise=null,ssModelPromise=null,ssSessionPromise=null,ssSession=null,ssEngine='',ssWarmPromise=null;
 
 function loadScamSenseOrt(){
  if(window.ort)return Promise.resolve(window.ort);
@@ -2575,7 +2575,7 @@ async function getScamSenseSession(){
  ssSessionPromise=(async function(){
   var ort=await loadScamSenseOrt();
   ort.env.wasm.wasmPaths=SS_ORT_WASM;
-  ort.env.wasm.numThreads=1;
+  ort.env.wasm.numThreads=window.crossOriginIsolated?Math.max(1,Math.min(4,navigator.hardwareConcurrency||2)):1;
   ort.env.wasm.proxy=false;
   var bytes=await getScamSenseModel(),last=null,tries=[];
   if(navigator.gpu)tries.push(['webgpu',{executionProviders:['webgpu']}]);
@@ -2605,10 +2605,16 @@ function ssImageTensor(bitmap,ort){
  }
  return new ort.Tensor('float32',out,[1,3,size,size]);
 }
-async function analyzeLocal(file){
+function warmScamSenseDetector(){
+  if(ssSession)return Promise.resolve(ssSession);
+  if(ssWarmPromise)return ssWarmPromise;
+  ssWarmPromise=getScamSenseSession().catch(function(e){ssWarmPromise=null;throw e});
+  return ssWarmPromise;
+ }
+ async function analyzeLocal(file){
  if(!file||!/^image\/(jpeg|png|webp)$/.test(file.type||''))throw new Error('Choose a JPEG, PNG or WebP picture.');
  if(file.size>8*1024*1024)throw new Error('Choose a picture smaller than 8 MB.');
- var ort=await loadScamSenseOrt(),session=await getScamSenseSession(),bitmap;
+ var ort=await loadScamSenseOrt(),session=await warmScamSenseDetector(),bitmap;
  try{bitmap=await createImageBitmap(file)}catch(e){throw new Error('This picture could not be opened. Please choose another one.')}
  if(bitmap.width<64||bitmap.height<64){bitmap.close();throw new Error('Choose a larger picture so the detector can examine it.')}
  var tensor;
@@ -2819,11 +2825,11 @@ return title('Trace results','Demo results')
 /* ----- Feature 3: Image Authenticity ----- */
 Views.auth=function(){
 var A=S.auth;
-if(A.stage==='run')return title('Running ScamSense AI','Please wait')+demoBox('The first check downloads the 44 MB model. The picture itself stays on this phone. This may take a little while.')+'<div style="height:14px"></div>'+stepsView(AUTH_STEPS,S.stepIdx||0);
+if(A.stage==='run')return title('Checking your picture','Please wait')+demoBox('ScamSense is preparing the detector and analysing your picture on this phone. The first setup may take longer; later checks should be faster.')+'<div style="height:14px"></div>'+stepsView(AUTH_STEPS,S.stepIdx||0);
 if(A.stage==='done'&&A.res)return authResult();
 var pick=A.img?'<div class="card" style="display:flex;gap:12px;align-items:center"><img src="'+A.img.url+'" alt="Picture to check" style="width:64px;height:64px;object-fit:cover;border-radius:12px"><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(A.img.file.name)+'</div><div class="rs">Image • '+(A.img.file.size/1048576).toFixed(1)+' MB</div></div><button class="ib" data-act="au-rm" aria-label="Remove picture" style="font-size:20px">'+I('x','aria-hidden="true"')+'</button></div>':'<button class="th add" data-act="au-add" style="width:100%;height:120px;margin:0 0 14px" aria-label="Choose a picture">'+I('upload','aria-hidden="true" style="font-size:28px"')+'<span>Choose a picture</span></button>';
 return vm()+title('Image Authenticity','Check whether a picture may have been generated by AI.')+pick
-+'<div class="demo" style="margin:0 0 14px">'+I('info','aria-hidden="true"')+' ScamSense runs its AI detector on this phone. Your picture is not uploaded. The first use downloads a model of about 44 MB; later checks use the saved copy. Results are estimates, not proof.</div>'
++'<div class="demo" style="margin:0 0 14px">'+I('info','aria-hidden="true"')+' Your picture stays on this phone. The first check downloads the AI model once (about 44 MB); later checks use the saved copy. Results are estimates, not proof.</div>'
 +prim('Run AI image check','au-start',undefined,!A.img)
 +'<div class="rs" style="text-align:center">JPEG, PNG or WebP • Up to 8 MB • No sign-in needed for the image check</div>';
 }
@@ -3968,7 +3974,7 @@ fs.slice(0,3-T.imgs.length).forEach(function(f){var o={file:f,url:URL.createObje
 if(!bad&&fs.length>3-(T.imgs.length-Math.min(fs.length,3)))bad='You can add up to 3 pictures.';
 S.vmsg=bad;go('trace');
 }else if(tg==='auth'){
-if(fs[0]){var A=S.auth,o={file:fs[0],url:URL.createObjectURL(fs[0]),hash:null};A.img=o;dHash(o.url).then(function(h){o.hash=h})}
+if(fs[0]){var A=S.auth,o={file:fs[0],url:URL.createObjectURL(fs[0]),hash:null};A.img=o;dHash(o.url).then(function(h){o.hash=h});warmScamSenseDetector().then(function(){if(S.view==='auth'&&S.auth.img===o)render()},function(){if(S.view==='auth'&&S.auth.img===o)render()})}
 S.vmsg=bad;go('auth');
 }else if(tg==='case'){
 var c=curCase();
