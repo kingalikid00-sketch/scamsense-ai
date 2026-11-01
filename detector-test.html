@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#050B1E">
+<title>ScamSense Image Detector Test</title>
+<style>
+*{box-sizing:border-box}body{margin:0;padding:22px 16px 40px;background:#071126;color:#edf3ff;font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:520px;margin:auto}h1{font-size:25px;margin:10px 0}p{color:#b8c7e6}.card{background:#101f3e;border:1px solid #263b65;border-radius:18px;padding:16px;margin:14px 0}button,.pick{display:block;width:100%;border:0;border-radius:12px;padding:14px;background:#2867ed;color:white;font-weight:700;font-size:16px;text-align:center;margin:10px 0}button:disabled{opacity:.5}.pick{background:#1c3158}input{width:100%;margin-top:10px}.small{font-size:13px;color:#a8b8d8}.status{min-height:24px;overflow-wrap:anywhere}.result{font-size:20px;font-weight:750}.meter{height:8px;background:#263957;border-radius:10px;overflow:hidden}.meter span{display:block;height:100%;width:0;background:#55a0ff}.preview{max-width:100%;max-height:280px;display:block;margin:12px auto;border-radius:12px}.hidden{display:none}
+</style>
+</head>
+<body><main>
+<h1>ScamSense picture detector test</h1>
+<p>This is a separate test page. It does not change the live app.</p>
+<div class="card">
+<strong>Step 1 — Choose a picture</strong>
+<label class="pick" for="file">Choose picture</label>
+<input id="file" type="file" accept="image/jpeg,image/png,image/webp">
+<img id="preview" class="preview hidden" alt="Selected picture preview">
+<p class="small">JPEG, PNG or WebP. Up to 15 MB. Your picture stays on this device.</p>
+</div>
+<div class="card">
+<strong>Step 2 — Start the detector</strong>
+<p class="small">The first setup downloads a model of about 45 MB. Later visits can reuse the saved copy. It may not run on every phone.</p>
+<button id="start">Download and prepare detector</button>
+<div class="meter"><span id="bar"></span></div>
+<div id="status" class="status small" aria-live="polite">Detector not prepared.</div>
+</div>
+<div class="card">
+<strong>Step 3 — Check the picture</strong>
+<button id="check" disabled>Check picture</button>
+<div id="result" class="result" aria-live="polite"></div>
+<p id="detail" class="small"></p>
+</div>
+<p class="small">Test only. An AI score is an estimate, not proof. A low score does not prove a picture is genuine. This page does not identify people or upload your picture.</p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js"></script>
+<script>
+(function(){
+'use strict';
+const MODEL_URL='https://github.com/Phineas1500/sieve-ai-image-detector/releases/download/v0.14.0/w5810_best_fp16.onnx';
+const MODEL_SHA='8392faaf0191c339ed76cf68861b1f4fac15da67e8669fa222e3181c59b2d748';
+const META={input_size:384,resize_shorter_side:440,norm_mean:[.485,.456,.406],norm_std:[.229,.224,.225],calibration:{temperature:1,bias:.2}};
+const $=id=>document.getElementById(id);
+let file=null,session=null,modelBuffer=null,busy=false;
+function say(t){$('status').textContent=t}
+function hex(buf){return Array.from(new Uint8Array(buf),b=>b.toString(16).padStart(2,'0')).join('')}
+function openDB(){return new Promise((resolve,reject)=>{const q=indexedDB.open('scamsense-sieve-test',1);q.onupgradeneeded=()=>q.result.createObjectStore('models');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)})}
+async function cachedModel(){try{const db=await openDB();return await new Promise(resolve=>{const q=db.transaction('models').objectStore('models').get(MODEL_SHA);q.onsuccess=()=>resolve(q.result||null);q.onerror=()=>resolve(null)})}catch(e){return null}}
+async function saveModel(buf){try{const db=await openDB();await new Promise((resolve,reject)=>{const tx=db.transaction('models','readwrite');tx.objectStore('models').put(buf,MODEL_SHA);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});return true}catch(e){return false}}
+async function downloadModel(){
+ let buf=await cachedModel();
+ if(buf){const hash=hex(await crypto.subtle.digest('SHA-256',buf));if(hash===MODEL_SHA){say('Saved model found. Checking it…');return buf}}
+ say('Downloading model…');
+ const res=await fetch(MODEL_URL,{mode:'cors',cache:'no-store'});
+ if(!res.ok)throw new Error('Model download failed ('+res.status+').');
+ if(!res.body){buf=await res.arrayBuffer();$('bar').style.width='100%'}
+ else{const reader=res.body.getReader(),chunks=[];let loaded=0,total=Number(res.headers.get('content-length'))||45*1024*1024;while(true){const x=await reader.read();if(x.done)break;chunks.push(x.value);loaded+=x.value.length;$('bar').style.width=Math.min(99,loaded/total*100)+'%';say('Downloading model… '+Math.round(loaded/1048576)+' MB')}const all=new Uint8Array(loaded);let at=0;for(const c of chunks){all.set(c,at);at+=c.length}buf=all.buffer}
+ say('Verifying downloaded model…');const hash=hex(await crypto.subtle.digest('SHA-256',buf));if(hash!==MODEL_SHA)throw new Error('Model verification failed. Please retry.');
+ $('bar').style.width='100%';const saved=await saveModel(buf);say(saved?'Model downloaded and saved on this phone.':'Model ready for this visit. Phone storage did not allow saving a copy.');return buf;
+}
+function resample(src,dw,dh){
+ const pass=(data,sw,sh,size,horizontal)=>{const srcSize=horizontal?sw:sh,scale=srcSize/size,fs=Math.max(scale,1),support=fs,ow=horizontal?size:sw,oh=horizontal?sh:size,out=new Float32Array(ow*oh*4),bounds=[];for(let i=0;i<size;i++){const center=(i+.5)*scale,lo=Math.max(0,Math.floor(center-support)),hi=Math.min(srcSize,Math.ceil(center+support)),w=new Float32Array(hi-lo);let sum=0;for(let k=lo;k<hi;k++){const t=Math.abs((k+.5-center)/fs),v=t<1?1-t:0;w[k-lo]=v;sum+=v}if(sum>0)for(let k=0;k<w.length;k++)w[k]/=sum;bounds.push([lo,w])}for(let y=0;y<oh;y++)for(let x=0;x<ow;x++){const [lo,w]=bounds[horizontal?x:y];let r=0,g=0,b=0;for(let k=0;k<w.length;k++){const j=horizontal?(y*sw+lo+k)*4:((lo+k)*sw+x)*4;r+=data[j]*w[k];g+=data[j+1]*w[k];b+=data[j+2]*w[k]}const o=(y*ow+x)*4;out[o]=r;out[o+1]=g;out[o+2]=b;out[o+3]=255}return out};
+ let d=pass(src.data,src.width,src.height,dw,true);d=pass(d,dw,src.height,dh,false);const clamped=new Uint8ClampedArray(dw*dh*4);for(let i=0;i<d.length;i++)clamped[i]=Math.round(d[i]);return {data:clamped,width:dw,height:dh};
+}
+function tensorFrom(img){
+ const S=440,C=384,scale=S/Math.min(img.width,img.height),rw=Math.max(C,Math.round(img.width*scale)),rh=Math.max(C,Math.round(img.height*scale));
+ const c=document.createElement('canvas');c.width=img.width;c.height=img.height;const cx=c.getContext('2d',{willReadFrequently:true});cx.drawImage(img,0,0);const raw=cx.getImageData(0,0,c.width,c.height);
+ const resized=resample(raw,rw,rh),x0=Math.floor((rw-C)/2),y0=Math.floor((rh-C)/2),out=new Float32Array(3*C*C),mean=META.norm_mean,std=META.norm_std;
+ for(let y=0;y<C;y++)for(let x=0;x<C;x++){const i=((y+y0)*rw+x+x0)*4,k=y*C+x;out[k]=(resized.data[i]/255-mean[0])/std[0];out[C*C+k]=(resized.data[i+1]/255-mean[1])/std[1];out[2*C*C+k]=(resized.data[i+2]/255-mean[2])/std[2]}
+ return new ort.Tensor('float32',out,[1,3,C,C]);
+}
+async function prepare(){
+ if(session)return;
+ if(!window.ort)throw new Error('The detector engine could not load. Check your connection and retry.');
+ ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+ ort.env.wasm.numThreads=1;
+ modelBuffer=await downloadModel();say('Preparing AI model on this phone…');
+ session=await ort.InferenceSession.create(modelBuffer,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
+ $('check').disabled=!file;say('Detector is ready on this phone. You can now check a picture.');
+}
+$('file').addEventListener('change',()=>{file=$('file').files&&$('file').files[0]||null;$('result').textContent='';$('detail').textContent='';if(file){if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size>15*1024*1024){file=null;$('file').value='';say('Choose a JPEG, PNG or WebP picture under 15 MB.');return}const u=URL.createObjectURL(file);$('preview').src=u;$('preview').classList.remove('hidden')}else $('preview').classList.add('hidden');$('check').disabled=!session||!file});
+$('start').addEventListener('click',async()=>{if(busy)return;busy=true;$('start').disabled=true;try{await prepare()}catch(e){session=null;say('Could not prepare detector: '+(e.message||e));$('check').disabled=true}finally{busy=false;$('start').disabled=false}});
+$('check').addEventListener('click',async()=>{if(!file||!session||busy)return;busy=true;$('check').disabled=true;$('result').textContent='Checking…';$('detail').textContent='Your picture is being analysed on this device.';try{const url=URL.createObjectURL(file);const img=new Image();await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('This picture could not be opened.'));img.src=url});if(img.naturalWidth<32||img.naturalHeight<32)throw new Error('This picture is too small to analyse.');const tensor=tensorFrom(img);URL.revokeObjectURL(url);const feeds={};feeds[session.inputNames[0]]=tensor;const out=await session.run(feeds);const logit=Number(out[session.outputNames[0]].data[0]),score=1/(1+Math.exp(-(logit+.2)));const pct=Math.round(score*100);if(score>=.65){$('result').textContent='AI-like signals detected';$('detail').textContent='Model estimate: '+pct+'% AI signal. This is not proof that the picture was made with AI.'}else if(score>=.25){$('result').textContent='Not sure';$('detail').textContent='Model estimate: '+pct+'% AI signal. The result is not strong enough for a clear answer.'}else{$('result').textContent='No strong AI signal found';$('detail').textContent='Model estimate: '+pct+'% AI signal. This does not prove the picture is a real photograph.'}}catch(e){$('result').textContent='Check could not finish';$('detail').textContent=e.message||String(e)}finally{busy=false;$('check').disabled=!session||!file}});
+})();
+</script></body></html>
