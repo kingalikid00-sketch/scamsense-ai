@@ -1134,7 +1134,46 @@ async function handleChatImage(request, env, origin) {
    return await env.DB.prepare("SELECT id, status, created_at, expires_at, consent_at, completed_at FROM verification_requests WHERE token_hash = ? LIMIT 1")
      .bind(tokenHash).first();
  }
- async function handleVerifyCheck(env, origin, url) {
+ async function ensureVerifyLocationTable(env) {
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS verification_locations (request_id TEXT PRIMARY KEY, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_m REAL, shared_at TEXT NOT NULL, expires_at TEXT NOT NULL)").run();
+}
+async function readVerifyLocation(env, requestId) {
+  try {
+    await ensureVerifyLocationTable(env);
+    const row = await env.DB.prepare("SELECT latitude, longitude, accuracy_m, shared_at FROM verification_locations WHERE request_id = ? AND expires_at > ? LIMIT 1")
+      .bind(requestId, new Date().toISOString()).first();
+    return row ? { latitude: row.latitude, longitude: row.longitude, accuracy_m: row.accuracy_m, shared_at: row.shared_at, precision: "Coordinates rounded to about 0.01 degree; approximate only." } : null;
+  } catch (e) { return null; }
+}
+async function handleVerifyLocation(request, env, origin) {
+  if (!env || !env.DB || typeof env.DB.prepare !== "function") return json({ error: "Location sharing is not available right now." }, 503, origin);
+  let body;
+  try { const raw = await request.text(); if (raw.length > 3000) return json({ error: "That request is too large." }, 413, origin); body = JSON.parse(raw); }
+  catch (e) { return badRequest(origin); }
+  const token = body && typeof body.token === "string" ? body.token : "";
+  const lat = Number(body && body.latitude), lon = Number(body && body.longitude);
+  const accuracy = Number(body && body.accuracy);
+  if (!validVerifyToken(token) || !Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180)
+    return json({ error: "That location information is not valid." }, 400, origin);
+  try {
+    const row = await findVerifyRequest(env, token);
+    if (!row) return json({ error: "This request was not found." }, 404, origin);
+    if (Date.parse(row.expires_at) <= Date.now()) return json({ error: "This request has expired.", status: "expired" }, 410, origin);
+    if (row.status !== "consented" && row.status !== "completed") return json({ error: "Please agree to the request before sharing your location.", status: row.status }, 409, origin);
+    await ensureVerifyLocationTable(env);
+    const now = new Date().toISOString();
+    const roundedLat = Math.round(lat * 100) / 100;
+    const roundedLon = Math.round(lon * 100) / 100;
+    const accuracyM = Number.isFinite(accuracy) && accuracy >= 0 && accuracy <= 100000 ? Math.round(accuracy) : null;
+    await env.DB.prepare("INSERT INTO verification_locations (request_id, latitude, longitude, accuracy_m, shared_at, expires_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(request_id) DO UPDATE SET latitude=excluded.latitude, longitude=excluded.longitude, accuracy_m=excluded.accuracy_m, shared_at=excluded.shared_at, expires_at=excluded.expires_at")
+      .bind(row.id, roundedLat, roundedLon, accuracyM, now, row.expires_at).run();
+    return json({ status: "location_shared", location: { latitude: roundedLat, longitude: roundedLon, accuracy_m: accuracyM, shared_at: now, precision: "Coordinates rounded to about 0.01 degree; approximate only." } }, 200, origin);
+  } catch (e) {
+    console.error("Live Identity Check: location could not be saved");
+    return json({ error: "We could not save the location. Please try again." }, 500, origin);
+  }
+}
+async function handleVerifyCheck(env, origin, url) {
    if (!env || !env.DB || typeof env.DB.prepare !== "function") return json({ error: "Live Identity Check storage is not connected yet." }, 503, origin);
    const token = url.searchParams.get("token") || "";
    if (!validVerifyToken(token)) return json({ error: "This verification link is not valid." }, 400, origin);
@@ -1145,8 +1184,9 @@ async function handleChatImage(request, env, origin) {
        await env.DB.prepare("UPDATE verification_requests SET status = 'expired' WHERE id = ? AND status IN ('pending', 'consented')").bind(row.id).run();
        return json({ status: "expired", expired: true }, 200, origin);
      }
+     const location = await readVerifyLocation(env, row.id);
      return json({ status: row.status, created_at: row.created_at, expires_at: row.expires_at,
-       consent_at: row.consent_at || null, completed_at: row.completed_at || null,
+       consent_at: row.consent_at || null, completed_at: row.completed_at || null, location,
        identity_confirmed: false, live_person_detected: false }, 200, origin);
    } catch (e) {
      console.error("Live Identity Check: request lookup failed");
@@ -1256,7 +1296,7 @@ export default {
       if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "This website is not allowed to use this service." }, 403, origin);
       return handleVerifyCheck(env, origin, url);
     }
-    if (path !== "/" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent" && path !== "/verify/complete") return json({ error: "Not found." }, 404, origin);
+    if (path !== "/" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent" && path !== "/verify/complete" && path !== "/verify/location") return json({ error: "Not found." }, 404, origin);
     if (request.method !== "POST") return json({ error: "Please use POST." }, 405, origin);
 
     // Only the ScamSense site may call this from a browser (CORS is NOT authentication)
@@ -1265,6 +1305,7 @@ export default {
     if (path === "/verify/create") return handleVerifyCreate(request, env, origin);
     if (path === "/verify/consent") return handleVerifyConsent(request, env, origin);
     if (path === "/verify/complete") return handleVerifyComplete(request, env, origin);
+    if (path === "/verify/location") return handleVerifyLocation(request, env, origin);
     if (path === "/connect/investigate") return handleInvestigate(request, env, origin);
     if (path === "/connect/analyze-image") return handleAnalyzeImage(request, env, origin);
     if (path === "/chat-image") return handleChatImage(request, env, origin);
