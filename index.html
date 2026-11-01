@@ -2576,13 +2576,25 @@ var SS_MODEL_SHA='87cf796d2ca7cd20039e17c4be40ff4559f58d16d29410e38e3fb8234e60c1
 var ssOrtPromise=null,ssModelPromise=null,ssDetectorSession=null;
 function loadSSOrt(){
  if(ssOrtPromise)return ssOrtPromise;
- ssOrtPromise=new Promise(function(resolve,reject){
-  if(window.ort){resolve(window.ort);return}
-  var sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js';
-  sc.onload=function(){if(window.ort)resolve(window.ort);else reject(new Error('The image checker could not start.'))};
-  sc.onerror=function(){reject(new Error('Could not load the image-checking engine. Check your internet and try again.'))};
-  document.head.appendChild(sc);
- });
+ ssOrtPromise=(async function(){
+  if(window.ort){window.ssOrtWasmBase='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';return window.ort}
+  var sources=[
+   {js:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js',wasm:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/'},
+   {js:'https://unpkg.com/onnxruntime-web@1.22.0/dist/ort.min.js',wasm:'https://unpkg.com/onnxruntime-web@1.22.0/dist/'}
+  ];
+  var lastError=null;
+  for(var i=0;i<sources.length;i++){
+   try{
+    await new Promise(function(resolve,reject){
+     var sc=document.createElement('script');sc.src=sources[i].js;sc.onload=resolve;sc.onerror=function(){sc.remove();reject(new Error('The image-checking engine could not load.'))};document.head.appendChild(sc);
+    });
+    if(!window.ort)throw new Error('The image-checking engine did not start.');
+    window.ssOrtWasmBase=sources[i].wasm;
+    return window.ort;
+   }catch(e){lastError=e}
+  }
+  throw lastError||new Error('Could not load the image-checking engine. Check your internet and try again.');
+ })().catch(function(e){ssOrtPromise=null;throw e});
  return ssOrtPromise;
 }
 function ssOpenModelDB(){return new Promise(function(resolve,reject){var q=indexedDB.open('scamsense-pe-tiny-model',1);q.onupgradeneeded=function(){q.result.createObjectStore('models')};q.onsuccess=function(){resolve(q.result)};q.onerror=function(){reject(q.error)}})}
@@ -2608,7 +2620,7 @@ async function ssLoadModel(){
 async function warmScamSenseDetector(){
  if(ssDetectorSession)return ssDetectorSession;
  var ort=await loadSSOrt();
- ort.env.wasm.wasmPaths='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
+ ort.env.wasm.wasmPaths=window.ssOrtWasmBase||'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
  ort.env.wasm.numThreads=1;
  var model=await ssLoadModel();
  ssDetectorSession=await ort.InferenceSession.create(model,{executionProviders:['wasm'],graphOptimizationLevel:'all'});
@@ -2873,7 +2885,7 @@ return vm()+title('Image Authenticity','Check whether a picture may be AI-genera
 }
 function authResult(){
 var R=S.auth.res,D=R.detector;
-if(R.failed)return title('Image Authenticity','')+card('<div style="font-size:20px;font-weight:700">Check failed</div>')+sec('Try again','au-start')+sec('Back to chat','chat');
+if(R.failed)return title('Image Authenticity','')+card('<div style="font-size:20px;font-weight:700">Check failed</div><div class="rs" style="margin-top:8px">'+esc(R.error||'The picture could not be checked. Please try again.')+'</div>')+sec('Try again','au-start')+sec('Back to chat','chat');
 var pct=D?Math.max(0,Math.min(100,D.pct)):null;
 var color=pct===null?'#94A3B8':(pct>=65?'#F59E0B':(pct>=25?'#0EA5E9':'#10B981'));
 var result=pct===null?'AI estimate unavailable':(pct+'% AI-generated');
