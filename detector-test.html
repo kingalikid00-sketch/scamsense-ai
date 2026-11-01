@@ -21,7 +21,7 @@
 </div>
 <div class="card">
 <strong>Step 2 — Start the detector</strong>
-<p class="small">The first setup downloads a model of about 45 MB. Later visits can reuse the saved copy. It may not run on every phone.</p>
+<p class="small">The first setup downloads a smaller model of about 13 MB. Later visits can reuse the saved copy. It was mainly tested on face images, so results on other pictures may be less reliable.</p>
 <button id="start">Download and prepare detector</button>
 <div class="meter"><span id="bar"></span></div>
 <div id="status" class="status small" aria-live="polite">Detector not prepared.</div>
@@ -39,23 +39,23 @@
 (function(){
 'use strict';
 const MODEL_URL='https://scamsense-ai.kingalikid00.workers.dev/detector-model';
-const MODEL_SHA='8392faaf0191c339ed76cf68861b1f4fac15da67e8669fa222e3181c59b2d748';
-const META={input_size:384,resize_shorter_side:440,norm_mean:[.485,.456,.406],norm_std:[.229,.224,.225],calibration:{temperature:1,bias:.2}};
+const MODEL_SHA='87cf796d2ca7cd20039e17c4be40ff4559f58d16d29410e38e3fb8234e60c10e';
+const META={input_size:256};
 const $=id=>document.getElementById(id);
 let file=null,session=null,modelBuffer=null,busy=false;
 function say(t){$('status').textContent=t}
 function hex(buf){return Array.from(new Uint8Array(buf),b=>b.toString(16).padStart(2,'0')).join('')}
-function openDB(){return new Promise((resolve,reject)=>{const q=indexedDB.open('scamsense-sieve-test',1);q.onupgradeneeded=()=>q.result.createObjectStore('models');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)})}
+function openDB(){return new Promise((resolve,reject)=>{const q=indexedDB.open('scamsense-pe-tiny-test',1);q.onupgradeneeded=()=>q.result.createObjectStore('models');q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error)})}
 async function cachedModel(){try{const db=await openDB();return await new Promise(resolve=>{const q=db.transaction('models').objectStore('models').get(MODEL_SHA);q.onsuccess=()=>resolve(q.result||null);q.onerror=()=>resolve(null)})}catch(e){return null}}
 async function saveModel(buf){try{const db=await openDB();await new Promise((resolve,reject)=>{const tx=db.transaction('models','readwrite');tx.objectStore('models').put(buf,MODEL_SHA);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});return true}catch(e){return false}}
 async function downloadModel(){
  let buf=await cachedModel();
  if(buf){const hash=hex(await crypto.subtle.digest('SHA-256',buf));if(hash===MODEL_SHA){say('Saved model found. Checking it…');return buf}}
- say('Downloading model…');
+ say('Downloading smaller model…');
  const res=await fetch(MODEL_URL,{mode:'cors',cache:'no-store'});
  if(!res.ok)throw new Error('Model download failed ('+res.status+'). The server could not provide the model.');
  if(!res.body){buf=await res.arrayBuffer();$('bar').style.width='100%'}
- else{const reader=res.body.getReader(),chunks=[];let loaded=0,total=Number(res.headers.get('content-length'))||45*1024*1024;while(true){const x=await reader.read();if(x.done)break;chunks.push(x.value);loaded+=x.value.length;$('bar').style.width=Math.min(99,loaded/total*100)+'%';say('Downloading model… '+Math.round(loaded/1048576)+' MB')}const all=new Uint8Array(loaded);let at=0;for(const c of chunks){all.set(c,at);at+=c.length}buf=all.buffer}
+ else{const reader=res.body.getReader(),chunks=[];let loaded=0,total=Number(res.headers.get('content-length'))||13*1024*1024;while(true){const x=await reader.read();if(x.done)break;chunks.push(x.value);loaded+=x.value.length;$('bar').style.width=Math.min(99,loaded/total*100)+'%';say('Downloading smaller model… '+Math.round(loaded/1048576)+' MB')}const all=new Uint8Array(loaded);let at=0;for(const c of chunks){all.set(c,at);at+=c.length}buf=all.buffer}
  say('Verifying downloaded model…');const hash=hex(await crypto.subtle.digest('SHA-256',buf));if(hash!==MODEL_SHA)throw new Error('Model verification failed. Please retry.');
  $('bar').style.width='100%';const saved=await saveModel(buf);say(saved?'Model downloaded and saved on this phone.':'Model ready for this visit. Phone storage did not allow saving a copy.');return buf;
 }
@@ -64,10 +64,10 @@ function resample(src,dw,dh){
  let d=pass(src.data,src.width,src.height,dw,true);d=pass(d,dw,src.height,dh,false);const clamped=new Uint8ClampedArray(dw*dh*4);for(let i=0;i<d.length;i++)clamped[i]=Math.round(d[i]);return {data:clamped,width:dw,height:dh};
 }
 function tensorFrom(img){
- const S=440,C=384,scale=S/Math.min(img.width,img.height),rw=Math.max(C,Math.round(img.width*scale)),rh=Math.max(C,Math.round(img.height*scale));
- const c=document.createElement('canvas');c.width=img.width;c.height=img.height;const cx=c.getContext('2d',{willReadFrequently:true});cx.drawImage(img,0,0);const raw=cx.getImageData(0,0,c.width,c.height);
- const resized=resample(raw,rw,rh),x0=Math.floor((rw-C)/2),y0=Math.floor((rh-C)/2),out=new Float32Array(3*C*C),mean=META.norm_mean,std=META.norm_std;
- for(let y=0;y<C;y++)for(let x=0;x<C;x++){const i=((y+y0)*rw+x+x0)*4,k=y*C+x;out[k]=(resized.data[i]/255-mean[0])/std[0];out[C*C+k]=(resized.data[i+1]/255-mean[1])/std[1];out[2*C*C+k]=(resized.data[i+2]/255-mean[2])/std[2]}
+ const C=256,scale=C/Math.min(img.width,img.height),rw=Math.max(C,Math.round(img.width*scale)),rh=Math.max(C,Math.round(img.height*scale));
+ const resized=document.createElement('canvas');resized.width=rw;resized.height=rh;const rc=resized.getContext('2d',{willReadFrequently:true});rc.imageSmoothingEnabled=true;rc.imageSmoothingQuality='high';rc.drawImage(img,0,0,rw,rh);
+ const x0=Math.floor((rw-C)/2),y0=Math.floor((rh-C)/2),crop=document.createElement('canvas');crop.width=C;crop.height=C;const cc=crop.getContext('2d',{willReadFrequently:true});cc.drawImage(resized,x0,y0,C,C,0,0,C,C);const px=cc.getImageData(0,0,C,C).data,out=new Float32Array(3*C*C);
+ for(let y=0;y<C;y++)for(let x=0;x<C;x++){const i=(y*C+x)*4,k=y*C+x;out[k]=px[i]/255;out[C*C+k]=px[i+1]/255;out[2*C*C+k]=px[i+2]/255}
  return new ort.Tensor('float32',out,[1,3,C,C]);
 }
 async function prepare(){
@@ -81,6 +81,6 @@ async function prepare(){
 }
 $('file').addEventListener('change',()=>{file=$('file').files&&$('file').files[0]||null;$('result').textContent='';$('detail').textContent='';if(file){if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size>15*1024*1024){file=null;$('file').value='';say('Choose a JPEG, PNG or WebP picture under 15 MB.');return}const u=URL.createObjectURL(file);$('preview').src=u;$('preview').classList.remove('hidden')}else $('preview').classList.add('hidden');$('check').disabled=!session||!file});
 $('start').addEventListener('click',async()=>{if(busy)return;busy=true;$('start').disabled=true;try{await prepare()}catch(e){session=null;say('Could not prepare detector: '+(e.message||e));$('check').disabled=true}finally{busy=false;$('start').disabled=false}});
-$('check').addEventListener('click',async()=>{if(!file||!session||busy)return;busy=true;$('check').disabled=true;$('result').textContent='Checking…';$('detail').textContent='Your picture is being analysed on this device.';try{const url=URL.createObjectURL(file);const img=new Image();await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('This picture could not be opened.'));img.src=url});if(img.naturalWidth<32||img.naturalHeight<32)throw new Error('This picture is too small to analyse.');const tensor=tensorFrom(img);URL.revokeObjectURL(url);const feeds={};feeds[session.inputNames[0]]=tensor;const out=await session.run(feeds);const logit=Number(out[session.outputNames[0]].data[0]),score=1/(1+Math.exp(-(logit+.2)));const pct=Math.round(score*100);if(score>=.65){$('result').textContent='AI-like signals detected';$('detail').textContent='Model estimate: '+pct+'% AI signal. This is not proof that the picture was made with AI.'}else if(score>=.25){$('result').textContent='Not sure';$('detail').textContent='Model estimate: '+pct+'% AI signal. The result is not strong enough for a clear answer.'}else{$('result').textContent='No strong AI signal found';$('detail').textContent='Model estimate: '+pct+'% AI signal. This does not prove the picture is a real photograph.'}}catch(e){$('result').textContent='Check could not finish';$('detail').textContent=e.message||String(e)}finally{busy=false;$('check').disabled=!session||!file}});
+$('check').addEventListener('click',async()=>{if(!file||!session||busy)return;busy=true;$('check').disabled=true;$('result').textContent='Checking…';$('detail').textContent='Your picture is being analysed on this device.';try{const url=URL.createObjectURL(file);const img=new Image();await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('This picture could not be opened.'));img.src=url});if(img.naturalWidth<32||img.naturalHeight<32)throw new Error('This picture is too small to analyse.');const tensor=tensorFrom(img);URL.revokeObjectURL(url);const feeds={};feeds[session.inputNames[0]]=tensor;const out=await session.run(feeds);const logits=out[session.outputNames[0]].data;const mx=Math.max(Number(logits[0]),Number(logits[1]));const e0=Math.exp(Number(logits[0])-mx),e1=Math.exp(Number(logits[1])-mx);const score=e0/(e0+e1);const pct=Math.round(score*100);if(score>=.65){$('result').textContent='AI-like signals detected';$('detail').textContent='Model estimate: '+pct+'% AI signal. This is not proof that the picture was made with AI. This small model was mainly tested on face images.'}else if(score>=.25){$('result').textContent='Not sure';$('detail').textContent='Model estimate: '+pct+'% AI signal. The result is not strong enough for a clear answer. This model was mainly tested on face images.'}else{$('result').textContent='No strong AI signal found';$('detail').textContent='Model estimate: '+pct+'% AI signal. This does not prove the picture is a real photograph. This model was mainly tested on face images.'}}catch(e){$('result').textContent='Check could not finish';$('detail').textContent=e.message||String(e)}finally{busy=false;$('check').disabled=!session||!file}});
 })();
 </script></body></html>
