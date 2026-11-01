@@ -31,10 +31,12 @@ button:disabled{opacity:.55;cursor:default}
 <button id="decline" class="secondary" type="button">No thanks</button>
 <div id="cameraStep" class="hidden">
 <p style="margin:16px 0 4px"><b>Camera session</b></p>
-<p>Allow camera access, look at the preview, then tap “Finish camera session”. Nothing is recorded or sent.</p>
+<p>Camera and location are separate choices. You can share either one, both, or neither.</p>
 <video id="camera" autoplay muted playsinline></video>
 <button id="startCamera">Turn on camera</button>
 <button id="finish" disabled>Finish camera session</button>
+<button id="shareLocation" class="secondary" type="button">Share my approximate location</button>
+<p id="locationInfo" class="small" aria-live="polite">Your location is not shared unless you tap the button and allow it.</p>
 </div>
 <div id="status" role="status" aria-live="polite"></div>
 <div class="small">The link expires after 30 minutes. Never share passwords, bank details, or security codes. A completed camera session is not proof of identity or liveness.</div>
@@ -45,7 +47,8 @@ const API="https://scamsense-ai.kingalikid00.workers.dev";
 const token=new URLSearchParams(location.search).get("token")||"";
 const agree=document.getElementById("agree"),decline=document.getElementById("decline"),status=document.getElementById("status"),details=document.getElementById("details");
 const cameraStep=document.getElementById("cameraStep"),video=document.getElementById("camera"),start=document.getElementById("startCamera"),finish=document.getElementById("finish");
-let usable=false,stream=null,consented=false,done=false;
+const shareLocation=document.getElementById("shareLocation"),locationInfo=document.getElementById("locationInfo");
+let usable=false,stream=null,consented=false,done=false,locationShared=false;
 function say(t){status.textContent=t}
 function stopCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}video.srcObject=null;video.style.display="none";finish.disabled=true}
 function lock(){agree.disabled=true;decline.disabled=true;start.disabled=true;finish.disabled=true}
@@ -55,12 +58,27 @@ fetch(API+"/verify/check?token="+encodeURIComponent(token),{cache:"no-store"})
 .then(r=>{
  if(r.status==="expired"){details.textContent="This request has expired.";say("Ask for a new link.");return}
  if(r.status==="completed"){details.textContent="This camera session was already completed.";say("No identity or liveness test was performed.");return}
- if(r.status==="consented"){consented=true;showCameraStep();details.textContent="Consent was already recorded. You can continue to the camera session.";return}
+ if(r.status==="consented"){consented=true;showCameraStep();details.textContent="Consent was already recorded. You can continue with the camera or location.";if(r.location){locationShared=true;locationInfo.textContent="Approximate location has already been shared.";shareLocation.disabled=true;}return}
  if(r.status!=="pending"){details.textContent="This request is no longer available.";say("Ask for a new link if needed.");return}
  usable=true;agree.disabled=false;details.textContent="This request is valid for a limited time. Read the privacy note before choosing.";
 })
 .catch(e=>{details.textContent="We could not load this request.";say(e.message||"Please try again later.");});
 function showCameraStep(){agree.classList.add("hidden");decline.classList.add("hidden");cameraStep.classList.remove("hidden");}
+shareLocation.addEventListener("click",function(){
+ if(!consented||locationShared)return;
+ if(!navigator.geolocation){locationInfo.textContent="Location sharing is not supported by this browser.";return;}
+ shareLocation.disabled=true;locationInfo.textContent="Waiting for your location permission…";
+ navigator.geolocation.getCurrentPosition(async function(pos){
+  try{
+   const response=await fetch(API+"/verify/location",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token,latitude:pos.coords.latitude,longitude:pos.coords.longitude,accuracy:pos.coords.accuracy})});
+   const result=await response.json();if(!response.ok)throw new Error(result.error||"Could not share location.");
+   locationShared=true;locationInfo.textContent="Your approximate location was shared. Coordinates are rounded for privacy and are not an identity check.";
+  }catch(e){shareLocation.disabled=false;locationInfo.textContent=e.message||"We could not share your location. Try again.";}
+ },function(err){
+  shareLocation.disabled=false;
+  locationInfo.textContent=err&&err.code===1?"Location permission was not allowed. Nothing was shared.": "We could not get your location. Check your phone’s location setting and try again.";
+ },{enableHighAccuracy:false,timeout:15000,maximumAge:60000});
+});
 agree.addEventListener("click",function(){
  if(!usable)return;agree.disabled=true;decline.disabled=true;say("Recording your choice…");
  fetch(API+"/verify/consent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token})})
