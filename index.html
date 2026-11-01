@@ -2888,12 +2888,13 @@ var R=S.auth.res,D=R.detector;
 if(R.failed)return title('Image Authenticity','')+card('<div style="font-size:20px;font-weight:700">Check failed</div><div class="rs" style="margin-top:8px">'+esc(R.error||'The picture could not be checked. Please try again.')+'</div>')+sec('Try again','au-start')+sec('Back to chat','chat');
 var pct=D?Math.max(0,Math.min(100,D.pct)):null;
 var color=pct===null?'#94A3B8':(pct>=65?'#F59E0B':(pct>=25?'#0EA5E9':'#10B981'));
-var result=pct===null?'AI estimate unavailable':(pct+'% AI-generated');
-var sub=pct===null?'Please try again.':((100-pct)+'% no AI signal');
+var result=pct===null?'AI signal score unavailable':('AI-like signals found: '+pct+'/100');
+var sub=pct===null?'Please try again.':(pct>=65?'Strong AI-like signals detected.':(pct>=25?'Some AI-like signals detected.':'Few AI-like signals detected.'));
 return '<div style="padding:28px 8px 18px;text-align:center">'+
-'<div style="font-size:32px;font-weight:800;line-height:1.2;color:'+color+'">'+result+'</div>'+
+'<div style="font-size:30px;font-weight:800;line-height:1.2;color:'+color+'">'+result+'</div>'+
 '<div style="font-size:18px;margin-top:10px;color:var(--cm-body,#C9D6F5)">'+sub+'</div>'+
-'<div class="rs" style="margin-top:8px">Estimate only</div></div>'+
+'<div class="rs" style="margin-top:8px">This is the detector score, not the percentage of the picture made by AI.</div>'+
+'<div class="rs" style="margin-top:6px">AI generator: Not identified by this detector.</div></div>'+
 '<div style="margin-top:18px">'+prim('Check another picture','au-reset')+sec('Back to chat','chat')+'</div>';
 }
 /* ----- Feature 4: Money Check ----- */
@@ -3100,7 +3101,7 @@ Services.auth.analyze(A.img.file,A.img.url).then(function(r){
 'au-reset':function(){S.auth={img:null,stage:'setup',res:null,preview:null};go('auth')},
 add_auth:function(){
 var A=S.auth;if(!A.res||!A.img)return;
-var detail=A.res.detector?(A.res.detector.pct+'% AI-generated; '+(100-A.res.detector.pct)+'% likely not AI-generated.'):'AI image estimate unavailable.';
+var detail=A.res.detector?('AI-like signal score: '+A.res.detector.pct+'/100. Generator not identified by this detector.'):'AI signal score unavailable.';
 attach([mkItem('picture','user','Picture (for authenticity check)','',{imgUrl:A.img.url,hash:A.img.hash||('sz:'+A.img.file.size)}),mkItem('analysis','ai','Image Authenticity',detail,{kind:'auth'})]);
 },
 /* --- Money Check --- */
