@@ -3150,7 +3150,16 @@ Services.auth.analyze(A.img.file,A.img.url).then(function(r){
 'au-reset':function(){S.auth={img:null,stage:'setup',res:null,preview:null};go('auth')},
 add_auth:function(){
 var A=S.auth;if(!A.res||!A.img)return;
-var q=A.res.detector?A.res.detector.pct:null;var detail=q===null?'We couldn’t get a clear result from the picture scan.':(q+'% AI. '+(q>=65?'This picture looks more like AI than a real photo.':(q>=25?'This picture has some signs of AI.':'This picture looks more like a real photo than AI.'))+' This is an estimate, not proof.');
+var q=A.res.detector?A.res.detector.pct:null;
+var detail=q===null?'The visual picture check could not finish.':(q+'% AI-like signals. '+(q>=65?'This picture looks more like AI than a real photo.':(q>=25?'This picture has some signs of AI.':'This picture looks more like a real photo than AI.'))+' This is an estimate, not proof.');
+var p=A.res.provenance;
+if(p){
+ if(p.status==='ai_record')detail+=' Digital origin record: AI-generation information found.';
+ else if(p.status==='credentials_warning')detail+=' Digital origin record: credentials found, but validation needs caution.';
+ else if(p.status==='credentials_found')detail+=' Digital origin record: credentials found, but they do not clearly say AI was used.';
+ else if(p.status==='not_found')detail+=' No C2PA creator record was found. This does not prove the picture is human-made.';
+ else if(p.status==='failed')detail+=' The C2PA creator record could not be checked.';
+}
 attach([mkItem('picture','user','Picture (for authenticity check)','',{imgUrl:A.img.url,hash:A.img.hash||('sz:'+A.img.file.size)}),mkItem('analysis','ai','Image Authenticity',detail,{kind:'auth'})]);
 },
 /* --- Money Check --- */
