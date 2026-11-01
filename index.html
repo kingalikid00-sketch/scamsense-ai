@@ -2712,6 +2712,7 @@ async function analyzeImageAuthenticity(file){
  var detector=results[1].status==='fulfilled'?results[1].value:null;
  var detectorError=results[1].status==='rejected'?(results[1].reason&&results[1].reason.message||'AI signal check could not finish.'):null;
  if(provenance.failed&&!detector)throw new Error((provenance.error||'Content record check failed.')+' '+(detectorError||''));
+ if(provenance.failed){provenance.provenanceError=provenance.error;provenance.failed=false;provenance.status='not_found';provenance.summary='The content-record check could not finish.';provenance.details=[]}
  provenance.detector=detector;
  provenance.detectorError=detectorError;
  provenance.name=file.name;
@@ -2889,15 +2890,15 @@ if(R.failed)return title('Image authenticity','Not completed')+warnBox(esc(R.err
 var warning=R.status==='credentials_warning';
 var ai=R.status==='ai_record';
 var found=warning||ai||R.status==='credentials_found';
-var label=warning?'AI details found — not verified':(ai?'AI details found':(R.status==='credentials_found'?'Creator details found':'No creator details found'));
+var label=R.provenanceError?'Content record check unavailable':(warning?'AI details found — not verified':(ai?'AI details found':(R.status==='credentials_found'?'Creator details found':'No creator details found')));
 var color=warning?'#DC6B54':(ai?'#F59E0B':(found?'#0EA5E9':'#64748B'));
-var message=warning?'The picture has a note saying AI was used, but we could not verify that note.':(ai?'The picture’s creator record says AI was used.':(R.status==='credentials_found'?'We found creator details, but they do not say AI was used.':'This picture has no supported creator record. That is common with pictures shared online. This check cannot tell whether the picture is real or AI-made.'));
+var message=R.provenanceError?'The signed content-record check could not finish. The AI signal result below is separate.':(warning?'The picture has a note saying AI was used, but we could not verify that note.':(ai?'The picture’s creator record says AI was used.':(R.status==='credentials_found'?'We found creator details, but they do not say AI was used.':'This picture has no supported creator record. That is common with pictures shared online. This check cannot tell whether the picture is real or AI-made.')));
 var source=R.issuer?'Record says: '+R.issuer:(R.generator?'Created with: '+R.generator:'');
 var D=R.detector,detectorHtml=D?('<div class="auth-reveal" style="margin:12px 0">'+card('<div style="font-size:18px;font-weight:700;color:'+(D.score>=.65?'#F59E0B':(D.score>=.25?'#0EA5E9':'#10B981'))+'">'+esc(D.label)+'</div><div style="margin-top:8px">Model estimate: '+D.pct+'% AI signal.</div><div class="rs" style="margin-top:8px">This is an estimate, not proof. The small model was mainly tested on face pictures, so other types may be less reliable.</div>')+'</div>'):(R.detectorError?'<div class="rs auth-reveal" style="margin:12px 0">AI signal check unavailable: '+esc(R.detectorError)+'</div>':'');
 return title('Image Authenticity','Check complete')
 +'<div class="auth-reveal">'+card('<div style="font-size:19px;font-weight:700;color:'+color+'">'+label+'</div><div style="margin-top:8px;line-height:1.5">'+esc(message)+'</div>')+'</div>'
 +detectorHtml
-+(source?'<div class="rs auth-reveal" style="padding:12px 2px;animation-delay:.10s">'+esc(source)+'</div>':'')
++(R.provenanceError?'<div class="rs auth-reveal" style="padding:8px 2px">'+esc(R.provenanceError)+'</div>':(source?'<div class="rs auth-reveal" style="padding:12px 2px;animation-delay:.10s">'+esc(source)+'</div>':''))
 +'<div class="rs auth-reveal" style="margin:12px 0;animation-delay:.18s">The first result checks signed creator records. The AI signal is a separate pixel-based estimate. Neither result identifies anyone.</div>'
 +'<div class="rs auth-reveal" style="margin:12px 0;animation-delay:.26s">Both checks run on this device. Your picture is not uploaded.</div>'
 +'<div class="auth-reveal" style="animation-delay:.32s">'+prim('Add result to a case','add_auth')+sec('Back to chat','chat')+sec('Check another picture','au-reset')+'</div>';
