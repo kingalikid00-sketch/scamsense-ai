@@ -101,7 +101,7 @@ const PLATFORM_ALIASES = {
 
 function corsHeaders(origin) {
   const h = {
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
@@ -1089,6 +1089,28 @@ export default {
     }
 
     const path = url.pathname;
+
+    // Serve only the pinned public Sieve model through this Worker so browser
+    // downloads are not blocked by the upstream release asset CORS policy.
+    if (path === "/detector-model") {
+      if (origin && origin !== ALLOWED_ORIGIN) return new Response("Forbidden", { status: 403 });
+      if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
+      const upstream = await fetch("https://github.com/Phineas1500/sieve-ai-image-detector/releases/download/v0.14.0/w5810_best_fp16.onnx", {
+        method: request.method, redirect: "follow", cf: { cacheTtl: 86400, cacheEverything: true }
+      });
+      if (!upstream.ok) return new Response("Detector model is temporarily unavailable.", { status: upstream.status, headers: { "Access-Control-Allow-Origin": ALLOWED_ORIGIN, "Cache-Control": "no-store" } });
+      const headers = new Headers();
+      headers.set("Content-Type", "application/octet-stream");
+      headers.set("Cache-Control", "public, max-age=86400");
+      headers.set("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+      headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+      headers.set("Access-Control-Allow-Headers", "Content-Type");
+      headers.set("Vary", "Origin");
+      const len = upstream.headers.get("Content-Length");
+      if (len) headers.set("Content-Length", len);
+      return new Response(request.method === "HEAD" ? null : upstream.body, { status: 200, headers });
+    }
+
     if (path !== "/" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image") return json({ error: "Not found." }, 404, origin);
     if (request.method !== "POST") return json({ error: "Please use POST." }, 405, origin);
 
