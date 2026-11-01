@@ -1090,12 +1090,12 @@ export default {
 
     const path = url.pathname;
 
-    // Serve only the pinned public Sieve model through this Worker so browser
-    // downloads are not blocked by the upstream release asset CORS policy.
+    // Serve the pinned 12.5 MB PE-Core Tiny model through this Worker.
+    // The model runs locally in the browser; image data is never sent here.
     if (path === "/detector-model") {
       if (origin && origin !== ALLOWED_ORIGIN) return new Response("Forbidden", { status: 403 });
       if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
-      const upstream = await fetch("https://github.com/Phineas1500/sieve-ai-image-detector/releases/download/v0.14.0/w5810_best_fp16.onnx", {
+      const upstream = await fetch("https://huggingface.co/Deckard618/imdet/resolve/5c957f2/pe_tiny/model.onnx", {
         method: request.method, redirect: "follow", cf: { cacheTtl: 86400, cacheEverything: true }
       });
       if (!upstream.ok) return new Response("Detector model is temporarily unavailable.", { status: upstream.status, headers: { "Access-Control-Allow-Origin": ALLOWED_ORIGIN, "Cache-Control": "no-store" } });
