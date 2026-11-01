@@ -2579,8 +2579,8 @@ function loadSSOrt(){
  ssOrtPromise=(async function(){
   if(window.ort){window.ssOrtWasmBase='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';return window.ort}
   var sources=[
-   {js:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.min.js',wasm:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/'},
-   {js:'https://unpkg.com/onnxruntime-web@1.22.0/dist/ort.min.js',wasm:'https://unpkg.com/onnxruntime-web@1.22.0/dist/'}
+   {js:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.js',wasm:'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/'},
+   {js:'https://unpkg.com/onnxruntime-web@1.22.0/dist/ort.wasm.min.js',wasm:'https://unpkg.com/onnxruntime-web@1.22.0/dist/'}
   ];
   var lastError=null;
   for(var i=0;i<sources.length;i++){
