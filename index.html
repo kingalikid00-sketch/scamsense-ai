@@ -1328,7 +1328,7 @@ emergency:function(){return title('Okay. Don’t panic. Let’s work through it 
 verify:function(){
 var r=S.req;
 var box=r?'<div style="background:#0E1A3C;border:1px solid #1A2A55;border-radius:16px;padding:14px;margin:0 0 14px"><div class="rs">Demo request link<span class="tag">DEMO</span></div><div style="font-size:16px;font-weight:500;word-break:break-all;margin:4px 0 10px">'+esc(r.link)+'</div><div class="rs" style="margin:0 0 10px">ID '+esc(r.id)+'. This link doesn’t work. It only shows the idea.</div><button class="chip" data-act="copyreq">'+I('copy','aria-hidden="true"')+'Copy link</button><span id="cp" style="font-size:14px;color:#8FA0C8;margin-left:8px"></span></div>':'<button data-act="mkreq" style="width:100%;height:54px;border-radius:27px;border:none;background:#14D3B0;color:#04222A;font-size:17px;font-weight:600;cursor:pointer;margin:0 0 14px">Create demo request</button>';
-return title('ScamSense Verify','Live identity verification')+'<div style="margin:0 0 14px">Ask someone to prove they’re really there, right now. It’s their choice, and they’ll be told why.</div>'+box+'<div class="h">What the other person would see</div><ul class="ul"><li>A clear note that a check is being requested.</li><li>That their camera may be needed.</li><li>That it’s voluntary, and why you’re asking.</li></ul><div class="h">What a real check could show</div><ul class="ul"><li>Live verification passed or not.</li><li>Time of the check.</li><li>Country, only if they allow it.</li><li>A one-time ID.</li><li>Optional: face similarity with a picture you supply.</li></ul><div class="h">What it can’t show</div><div style="color:#B4C3E8">A pass doesn’t prove legal identity. Face similarity doesn’t prove someone owns an account. This prototype runs no real verification.</div>'},
+return title('ScamSense Verify','Live identity verification')+'<div style="margin:0 0 14px">Ask someone to prove they’re really there, right now. It’s their choice, and they’ll be told why.</div>'+box+'<div class="h">What the other person would see</div><ul class="ul"><li>A clear note that a check is being requested.</li><li>That their camera may be needed.</li><li>That it’s voluntary, and why you’re asking.</li></ul><div class="h">What a real check could show</div><ul class="ul"><li>Live verification passed or not.</li><li>Time of the check.</li><li>Country, only if they allow it.</li><li>A one-time ID.</li><li>Optional: face similarity with a picture you supply.</li></ul><div class="h">What it can’t show</div><div style="color:#B4C3E8">A pass doesn’t prove legal identity. Face similarity doesn’t prove someone owns an account. This screen is a preview only. It does not create working links, turn on a camera, record video, compare faces, or verify identity.</div>'},
 saved:function(){
 var list=[];try{list=JSON.parse(localStorage.getItem(savedKey())||'[]')}catch(e){}
 var h='<div class="saved-screen">'+title('Saved Scans','Your saved investigations stay private on this device.');
@@ -2622,7 +2622,7 @@ function demoStrip(){return '<div class="demo" style="margin:0 0 14px">'+I('flas
 /* ----- Gift Card Protection: private, sender-controlled workflow ----- */
 Views.giftguard=function(){
 return title('Gift Card Protection','Check before you share a gift card.')
-+card('<div style="display:flex;align-items:center;gap:10px;margin:0 0 8px"><span class="circ" style="background:#2563EB">'+I('shield-check','aria-hidden="true"')+'</span><div style="font-size:17px;font-weight:600">Private by design</div></div><div class="rs" style="font-size:14px">The sender should control the card image and decide whether it is shared. The recipient must never see it before approval.</div>')
++card('<div style="display:flex;align-items:center;gap:10px;margin:0 0 8px"><span class="circ" style="background:#2563EB">'+I('shield-check','aria-hidden="true"')+'</span><div style="font-size:17px;font-weight:600">Privacy goal</div></div><div class="rs" style="font-size:14px">This is the privacy design we want to build. It is not active yet, so no gift card image or code should be uploaded.</div>')
 +sect('How this feature will work')
 +bullets(['You create a private request and add the gift card image.','The image is encrypted on your device before upload.','You send a one-time link to the person requesting the card.','They choose whether to take part in a clearly explained live check.','The verification video is encrypted for you to review. ScamSense AI and the server cannot view it.','You approve or decline. Only approval releases access to the card image.'])
 +sect('Important privacy rules')
@@ -2636,7 +2636,7 @@ Views.verify=function(){
 var r=S.req,res=S.vf.res;
 var box=r?card('<div class="rs">One-time verification request'+(r.server?'':'<span class="tag">DEMO</span>')+'</div><div style="font-size:16px;font-weight:500;word-break:break-all;margin:4px 0 6px">'+esc(r.link)+'</div><div class="rs" style="margin:0 0 10px">ID '+esc(r.id)+'. Single use. Valid for '+esc(r.expires)+(r.server?'.':'. This link doesn’t work. It only shows the idea.')+'</div><button class="chip" data-act="copyreq">'+I('copy','aria-hidden="true"')+'Copy link</button><span id="cp" style="font-size:14px;color:#8FA0C8;margin-left:8px"></span>'):prim('Generate verification request','mkreq');
 var rows=r&&r.server?row('shield-check','#10A37F','Check for a result','Shows what the other person has submitted so far.','vr-fetch'):r?row('camera','#2563EB','See what they would see','Preview the other person’s screens (demo).','vr_start')+(res?row('shield-check','#10A37F','View the result','From the last demo check.','vr_view'):''):'';
-return title('ScamSense Verify','Live Identity Verification')
+return vm()+title('ScamSense Verify','Live Identity Verification')
 +'<div style="margin:0 0 14px">Ask someone to show they’re really there, right now. It’s their choice, and they’ll be told why.</div>'
 +box+rows+Billing.panel('verify')
 +sect('How it works')+'<ol class="ul"><li>You generate a one-time request.</li><li>You send the link to the person.</li><li>They read what’s asked and choose whether to agree.</li><li>If they agree, they complete a short live check.</li><li>You see a result that says what it does and doesn’t show.</li></ol>'
@@ -2913,23 +2913,12 @@ verify:function(){go('verify')},
 'vr-fetch':function(){Billing.fetchRes()},
 'bill-buy':function(a){Billing.buy(a)},
 'bill-cancel':function(){Billing.cancel()},
-mkreq:function(){if(Billing.enabled){Billing.mkLink();return}S.req=Services.verify.createRequest();S.vf={consentCam:false,consentLoc:false,consentSim:false,res:null};go('verify')},
+mkreq:function(){S.req=null;S.vmsg='Real verification links are not connected yet. No link was created.';go('verify')},
 vr_start:function(){if(!S.req)return;S.vf.consentCam=S.vf.consentLoc=S.vf.consentSim=false;go('vr_intro')},
 vr_continue:function(){go('vr_consent')},
 vr_decline:function(){S.vf.res={declined:true,id:S.req.id,at:new Date()};report('verify',S.vf.res);go('vr_result')},
 vr_tog:function(k){var m={cam:'consentCam',loc:'consentLoc',sim:'consentSim'}[k];if(m){S.vf[m]=!S.vf[m];render()}},
-vr_allow:function(){
-if(!S.vf.consentCam)return;
-S.stepIdx=0;go('vr_live');
-runSteps(VR_PROMPTS,1500,function(){
-S.stepIdx=0;go('vr_prog');
-runSteps(vrProgSteps(),900,function(){
-S.vf.res=Services.verify.complete({id:S.req.id,loc:S.vf.consentLoc,sim:S.vf.consentSim});
-report('verify',S.vf.res);
-go('vr_result');
-});
-});
-},
+vr_allow:function(){S.vmsg='Live camera and liveness checks are not connected. No camera was started and no verification result was created.';go('verify')},
 vr_view:function(){if(S.vf.res)go('vr_result')},
 add_ver:function(){var r=S.vf.res;if(!r)return;attach([mkItem('analysis','demo','Verification check (demo)',r.declined?'The other person declined the check. ID '+r.id+'.':'Live person detected (demo). Identity not confirmed. ID '+r.id+'.',{kind:'verify'})])},
 /* --- Image Trace --- */
