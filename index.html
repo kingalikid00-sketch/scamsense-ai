@@ -1952,14 +1952,14 @@ function pictureCredentialText(r){
  if(r.status==='ai_record')return 'The picture’s digital record says AI was used. This is a record-based result, not a pixel-level AI detection.';
  if(r.status==='credentials_warning')return 'A picture record mentions AI, but its digital signature could not be trusted. Treat that result as unconfirmed.';
  if(r.status==='credentials_found')return 'A digital picture record was found, but it does not say that AI was used.';
- if(r.status==='not_found')return 'No supported digital picture record was found. That does not tell us whether AI was used.';
+ if(r.status==='not_found')return 'We couldn’t find creator details in this picture. This check can’t tell whether it was made with AI.';
  if(r.status==='unsupported')return 'This picture format could not be checked for a digital record. I can still look at the picture itself.';
  if(r.status==='failed')return 'I couldn’t check this picture’s digital record. I can still look at the picture itself.';
  return 'The picture record check could not be completed.';
 }
 function showPictureCredentialResult(r){
  var msg=pictureCredentialText(r);
- var note='This checks the file for C2PA Content Credentials only. It is not a universal AI-image detector, does not search the web, and does not identify anyone.';
+ var note='This check only looks for creator details saved in the picture. It cannot confirm whether the picture is real or AI-made.';
  var color=r&&r.status==='ai_record'?'#F5C56B':(r&&r.status==='credentials_warning'?'#FF8A8A':'#8FA0C8');
  push({role:'ai',html:'<div class="card" style="margin:0 0 14px;border-left:3px solid '+color+'"><div style="font-weight:700;margin-bottom:6px">Picture record check</div><div style="line-height:1.5">'+esc(msg)+'</div><div class="rs" style="margin-top:8px">'+esc(note)+'</div></div>'});
 }
@@ -2805,14 +2805,14 @@ if(R.failed)return title('Image authenticity','Not completed')+warnBox(esc(R.err
 var warning=R.status==='credentials_warning';
 var ai=R.status==='ai_record';
 var found=warning||ai||R.status==='credentials_found';
-var label=warning?'AI record found — not verified':(ai?'AI record found':(R.status==='credentials_found'?'Picture record found':'No record found'));
+var label=warning?'AI details found — not verified':(ai?'AI details found':(R.status==='credentials_found'?'Creator details found':'No creator details found'));
 var color=warning?'#DC6B54':(ai?'#F59E0B':(found?'#0EA5E9':'#64748B'));
-var message=warning?'This picture has a record saying AI was used. But its digital signature could not be trusted.':(ai?'The picture’s record says it was made or changed with AI.':(R.status==='credentials_found'?'A picture record was found, but it does not clearly say AI was used.':'We found no supported picture record. That does not mean the picture is real.'));
+var message=warning?'The picture has a note saying AI was used, but we could not verify that note.':(ai?'The picture’s creator record says AI was used.':(R.status==='credentials_found'?'We found creator details, but they do not say AI was used.':'This picture has no supported creator record. That is common with pictures shared online. This check cannot tell whether the picture is real or AI-made.'));
 var source=R.issuer?'Record says: '+R.issuer:(R.generator?'Created with: '+R.generator:'');
 return title('Image Authenticity','Check complete')
 +'<div class="auth-reveal">'+card('<div style="font-size:19px;font-weight:700;color:'+color+'">'+label+'</div><div style="margin-top:8px;line-height:1.5">'+esc(message)+'</div>')+'</div>'
 +(source?'<div class="rs auth-reveal" style="padding:12px 2px;animation-delay:.10s">'+esc(source)+'</div>':'')
-+'<div class="card auth-reveal" style="margin-top:8px;animation-delay:.18s"><b>Remember</b><div style="margin-top:6px;line-height:1.5">A missing record does not prove a picture is real. This check does not identify the person in it.</div></div>'
++'<div class="rs auth-reveal" style="margin:12px 0;animation-delay:.18s">This check looks only for creator details saved in the picture. It does not identify anyone.</div>'
 +'<div class="rs auth-reveal" style="margin:12px 0;animation-delay:.26s">Checked on this device. Your picture was not uploaded.</div>'
 +'<div class="auth-reveal" style="animation-delay:.32s">'+prim('Add result to a case','add_auth')+sec('Back to chat','chat')+sec('Check another picture','au-reset')+'</div>';
 }
