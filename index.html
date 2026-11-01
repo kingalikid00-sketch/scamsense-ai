@@ -2916,7 +2916,7 @@ if(A.stage==='run')return title('Checking your picture','Please wait')+demoBox('
 if(A.stage==='done'&&A.res)return authResult();
 var pick=A.img?'<div class="card" style="display:flex;gap:12px;align-items:center"><img src="'+A.img.url+'" alt="Picture to check" style="width:64px;height:64px;object-fit:cover;border-radius:12px"><div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(A.img.file.name)+'</div><div class="rs">Image • '+(A.img.file.size/1048576).toFixed(1)+' MB</div></div><button class="ib" data-act="au-rm" aria-label="Remove picture" style="font-size:20px">'+I('x','aria-hidden="true"')+'</button></div>':'<button class="th add" data-act="au-add" style="width:100%;height:120px;margin:0 0 14px" aria-label="Choose a picture">'+I('upload','aria-hidden="true" style="font-size:28px"')+'<span>Choose a picture</span></button>';
 return vm()+title('Image Authenticity','Check whether a picture may be AI-generated.')+pick
-+'<div class="demo" style="margin:0 0 14px">'+I('info','aria-hidden="true"')+' Checks the picture on this device. The picture is not uploaded.</div>'
++'<div class="rs" style="margin:2px 2px 14px;text-align:left">Checked on this device. Your picture is not sent to ScamSense.</div>'
 +prim('Check picture','au-start',undefined,!A.img)
 +'<div class="rs" style="text-align:center">JPEG, PNG or WebP • Up to 15 MB • No sign-in needed</div>';
 }
