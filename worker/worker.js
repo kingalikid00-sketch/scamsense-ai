@@ -1184,6 +1184,38 @@ async function handleChatImage(request, env, origin) {
    }
  }
 
+
+async function handleVerifyComplete(request, env, origin) {
+  if (!env || !env.DB || typeof env.DB.prepare !== "function") return json({ error: "Live Identity Check storage is not connected." }, 503, origin);
+  let body;
+  try {
+    const raw = await request.text();
+    if (raw.length > 3000) return json({ error: "That request is too large." }, 413, origin);
+    body = JSON.parse(raw);
+  } catch (e) { return badRequest(origin); }
+  const token = body && typeof body.token === "string" ? body.token : "";
+  if (!validVerifyToken(token)) return json({ error: "This request link is not valid." }, 400, origin);
+  try {
+    const row = await findVerifyRequest(env, token);
+    if (!row) return json({ error: "This request was not found." }, 404, origin);
+    if (row.status === "completed") return json({ status: "completed", completed_at: row.completed_at, identity_confirmed: false, live_person_detected: false }, 200, origin);
+    if (Date.parse(row.expires_at) <= Date.now()) {
+      await env.DB.prepare("UPDATE verification_requests SET status = 'expired' WHERE id = ? AND status IN ('pending', 'consented')").bind(row.id).run();
+      return json({ error: "This request has expired.", status: "expired" }, 410, origin);
+    }
+    if (row.status !== "consented") return json({ error: "Please give consent before completing the camera session.", status: row.status }, 409, origin);
+    const now = new Date().toISOString();
+    const result = await env.DB.prepare("UPDATE verification_requests SET status = 'completed', completed_at = ? WHERE id = ? AND status = 'consented' AND expires_at > ?")
+      .bind(now, row.id, now).run();
+    if (!result || !result.meta || result.meta.changes !== 1) return json({ error: "This request has expired or is no longer available.", status: "unavailable" }, 409, origin);
+    return json({ status: "completed", completed_at: now, camera_session_reported: true, identity_confirmed: false, live_person_detected: false,
+      message: "The browser reported a camera session. No video or image was uploaded, and no liveness or identity test was performed." }, 200, origin);
+  } catch (e) {
+    console.error("Live Identity Check: completion could not be recorded");
+    return json({ error: "We could not save the result right now. Please try again." }, 500, origin);
+  }
+}
+
 // ---------------------------------------------------------------- router
 
 export default {
@@ -1224,7 +1256,7 @@ export default {
       if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "This website is not allowed to use this service." }, 403, origin);
       return handleVerifyCheck(env, origin, url);
     }
-    if (path !== "/" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent") return json({ error: "Not found." }, 404, origin);
+    if (path !== "/" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent" && path !== "/verify/complete") return json({ error: "Not found." }, 404, origin);
     if (request.method !== "POST") return json({ error: "Please use POST." }, 405, origin);
 
     // Only the ScamSense site may call this from a browser (CORS is NOT authentication)
@@ -1232,6 +1264,7 @@ export default {
 
     if (path === "/verify/create") return handleVerifyCreate(request, env, origin);
     if (path === "/verify/consent") return handleVerifyConsent(request, env, origin);
+    if (path === "/verify/complete") return handleVerifyComplete(request, env, origin);
     if (path === "/connect/investigate") return handleInvestigate(request, env, origin);
     if (path === "/connect/analyze-image") return handleAnalyzeImage(request, env, origin);
     if (path === "/chat-image") return handleChatImage(request, env, origin);
