@@ -1076,6 +1076,114 @@ async function handleChatImage(request, env, origin) {
 
 
 
+
+ // ---------------------------------------------------------------- Live Identity Check: free request and consent foundation
+ // Uses D1 and Web Crypto only. No AI or paid identity API is called.
+ // Consent is not proof of identity or proof that a live person was detected.
+ function bytesToB64Url(bytes) {
+   let binary = "";
+   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+ }
+ async function sha256Hex(value) {
+   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+ }
+ function validVerifyToken(token) {
+   return typeof token === "string" && /^[A-Za-z0-9_-]{40,60}$/.test(token);
+ }
+ async function handleVerifyCreate(request, env, origin) {
+   if (!env || !env.DB || typeof env.DB.prepare !== "function") return json({ error: "Live Identity Check storage is not connected yet." }, 503, origin);
+   const auth = request.headers.get("Authorization") || "";
+   const m = auth.match(/^Bearer\s+(\S+)$/i);
+   if (!m || m[1].length > INV_MAX_TOKEN_CHARS) return json({ error: "Please sign in to create a request.", code: "signin" }, 401, origin);
+   try { await verifyFirebaseToken(m[1]); }
+   catch (e) {
+     const why = e && e.message ? String(e.message) : "unknown";
+     if (why === "jwks-http" || why === "jwks-shape" || (e && e.name === "TypeError")) return json({ error: "Sign-in check is unavailable right now. Please try again." }, 503, origin);
+     return json({ error: "Please sign in again to create a request.", code: "signin" }, 401, origin);
+   }
+   let body = {};
+   try {
+     const raw = await request.text();
+     if (raw.length > 3000) return json({ error: "That request is too large." }, 413, origin);
+     body = raw ? JSON.parse(raw) : {};
+   } catch (e) { return badRequest(origin); }
+   if (!body || typeof body !== "object" || Array.isArray(body)) return badRequest(origin);
+   const caseId = typeof body.case_id === "string" ? cleanText(body.case_id, 100) : "";
+   const random = new Uint8Array(32);
+   crypto.getRandomValues(random);
+   const token = bytesToB64Url(random);
+   const tokenHash = await sha256Hex(token);
+   const id = crypto.randomUUID();
+   const created = new Date();
+   const expires = new Date(created.getTime() + 30 * 60 * 1000);
+   try {
+     await env.DB.prepare("INSERT INTO verification_requests (id, token_hash, case_id, status, created_at, expires_at) VALUES (?, ?, ?, 'pending', ?, ?)")
+       .bind(id, tokenHash, caseId, created.toISOString(), expires.toISOString()).run();
+   } catch (e) {
+     console.error("Live Identity Check: could not save request");
+     return json({ error: "We could not create the request. Please try again." }, 500, origin);
+   }
+   const link = "https://kingalikid00-sketch.github.io/scamsense-ai/?live-check=" + encodeURIComponent(token);
+   return json({ request_id: id, link, expires_at: expires.toISOString(), expires_in_minutes: 30, status: "pending",
+     note: "This link records consent only. It does not confirm identity or detect a live person." }, 201, origin);
+ }
+ async function findVerifyRequest(env, token) {
+   const tokenHash = await sha256Hex(token);
+   return await env.DB.prepare("SELECT id, status, created_at, expires_at, consent_at, completed_at FROM verification_requests WHERE token_hash = ? LIMIT 1")
+     .bind(tokenHash).first();
+ }
+ async function handleVerifyCheck(env, origin, url) {
+   if (!env || !env.DB || typeof env.DB.prepare !== "function") return json({ error: "Live Identity Check storage is not connected yet." }, 503, origin);
+   const token = url.searchParams.get("token") || "";
+   if (!validVerifyToken(token)) return json({ error: "This verification link is not valid." }, 400, origin);
+   try {
+     const row = await findVerifyRequest(env, token);
+     if (!row) return json({ error: "This verification link was not found." }, 404, origin);
+     if (Date.parse(row.expires_at) <= Date.now() && row.status !== "completed") {
+       await env.DB.prepare("UPDATE verification_requests SET status = 'expired' WHERE id = ? AND status IN ('pending', 'consented')").bind(row.id).run();
+       return json({ status: "expired", expired: true }, 200, origin);
+     }
+     return json({ status: row.status, created_at: row.created_at, expires_at: row.expires_at,
+       consent_at: row.consent_at || null, completed_at: row.completed_at || null,
+       identity_confirmed: false, live_person_detected: false }, 200, origin);
+   } catch (e) {
+     console.error("Live Identity Check: request lookup failed");
+     return json({ error: "We could not check this link right now. Please try again." }, 500, origin);
+   }
+ }
+ async function handleVerifyConsent(request, env, origin) {
+   if (!env || !env.DB || typeof env.DB.prepare !== "function") return json({ error: "Live Identity Check storage is not connected yet." }, 503, origin);
+   let body;
+   try {
+     const raw = await request.text();
+     if (raw.length > 3000) return json({ error: "That request is too large." }, 413, origin);
+     body = JSON.parse(raw);
+   } catch (e) { return badRequest(origin); }
+   const token = body && typeof body.token === "string" ? body.token : "";
+   if (!validVerifyToken(token)) return json({ error: "This verification link is not valid." }, 400, origin);
+   try {
+     const row = await findVerifyRequest(env, token);
+     if (!row) return json({ error: "This verification link was not found." }, 404, origin);
+     if (Date.parse(row.expires_at) <= Date.now()) {
+       await env.DB.prepare("UPDATE verification_requests SET status = 'expired' WHERE id = ? AND status IN ('pending', 'consented')").bind(row.id).run();
+       return json({ error: "This link has expired. Ask the person to send a new one.", status: "expired" }, 410, origin);
+     }
+     if (row.status === "consented") return json({ status: "consented", consent_at: row.consent_at, identity_confirmed: false }, 200, origin);
+     if (row.status !== "pending") return json({ error: "This link can no longer be used.", status: row.status }, 409, origin);
+     const now = new Date().toISOString();
+     const result = await env.DB.prepare("UPDATE verification_requests SET status = 'consented', consent_at = ? WHERE id = ? AND status = 'pending' AND expires_at > ?")
+       .bind(now, row.id, now).run();
+     if (!result || !result.meta || result.meta.changes !== 1) return json({ error: "This link has expired or is no longer available.", status: "unavailable" }, 409, origin);
+     return json({ status: "consented", consent_at: now, identity_confirmed: false, live_person_detected: false,
+       message: "Consent recorded. No identity or liveness check has been performed." }, 200, origin);
+   } catch (e) {
+     console.error("Live Identity Check: consent could not be recorded");
+     return json({ error: "We could not record consent right now. Please try again." }, 500, origin);
+   }
+ }
+
 // ---------------------------------------------------------------- router
 
 export default {
@@ -1111,12 +1219,19 @@ export default {
       return new Response(request.method === "HEAD" ? null : upstream.body, { status: 200, headers });
     }
 
-    if (path !== "/" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image") return json({ error: "Not found." }, 404, origin);
+    if (path === "/verify/check") {
+      if (request.method !== "GET") return json({ error: "Please use GET." }, 405, origin);
+      if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "This website is not allowed to use this service." }, 403, origin);
+      return handleVerifyCheck(env, origin, url);
+    }
+    if (path !== "/" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent") return json({ error: "Not found." }, 404, origin);
     if (request.method !== "POST") return json({ error: "Please use POST." }, 405, origin);
 
     // Only the ScamSense site may call this from a browser (CORS is NOT authentication)
     if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "This website isn't allowed to use this service." }, 403, origin);
 
+    if (path === "/verify/create") return handleVerifyCreate(request, env, origin);
+    if (path === "/verify/consent") return handleVerifyConsent(request, env, origin);
     if (path === "/connect/investigate") return handleInvestigate(request, env, origin);
     if (path === "/connect/analyze-image") return handleAnalyzeImage(request, env, origin);
     if (path === "/chat-image") return handleChatImage(request, env, origin);
