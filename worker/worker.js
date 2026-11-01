@@ -1081,7 +1081,7 @@ async function handleAiAuthenticity(request, env, origin) {
   const ct = (request.headers.get("Content-Type") || "").toLowerCase();
   if (!ct.startsWith("application/json")) return json({ error: "That request wasn't valid. Please try again." }, 415, origin);
   const auth = request.headers.get("Authorization") || "";
-  const am = auth.match(/^Bearer\\s+(\\S+)$/i);
+  const am = auth.match(/^Bearer\s+(\S+)$/i);
   if (!am || am[1].length > INV_MAX_TOKEN_CHARS) return json({ error: "Please sign in to use this.", code: "signin" }, 401, origin);
   try {
     await verifyFirebaseToken(am[1]);
