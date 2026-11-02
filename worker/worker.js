@@ -1231,6 +1231,27 @@ async function handleVerifyCheck(env, origin, url) {
  }
 
 
+
+async function handleVerifySkip(request, env, origin) {
+  if (!env || !env.DB || typeof env.DB.prepare !== "function") return json({ error: "Live Identity Check storage is not connected." }, 503, origin);
+  let body;
+  try { const raw = await request.text(); if (raw.length > 3000) return json({ error: "That request is too large." }, 413, origin); body = JSON.parse(raw); }
+  catch (e) { return badRequest(origin); }
+  const token = body && typeof body.token === "string" ? body.token : "";
+  if (!validVerifyToken(token)) return json({ error: "This request link is not valid." }, 400, origin);
+  try {
+    const row = await findVerifyRequest(env, token);
+    if (!row) return json({ error: "This request was not found." }, 404, origin);
+    if (row.status === "skipped") return json({ status: "skipped", camera_used: false, identity_confirmed: false }, 200, origin);
+    if (Date.parse(row.expires_at) <= Date.now()) return json({ error: "This request has expired.", status: "expired" }, 410, origin);
+    if (row.status !== "consented") return json({ error: "Please agree before continuing.", status: row.status }, 409, origin);
+    const now = new Date().toISOString();
+    const result = await env.DB.prepare("UPDATE verification_requests SET status = 'skipped', completed_at = ? WHERE id = ? AND status = 'consented' AND expires_at > ?").bind(now, row.id, now).run();
+    if (!result || !result.meta || result.meta.changes !== 1) return json({ error: "This request has expired or is no longer available.", status: "unavailable" }, 409, origin);
+    return json({ status: "skipped", completed_at: now, camera_used: false, identity_confirmed: false, message: "The recipient chose to continue without camera access. No identity check was performed." }, 200, origin);
+  } catch (e) { console.error("Live Identity Check: camera skip could not be recorded"); return json({ error: "We could not save your choice right now. Please try again." }, 500, origin); }
+}
+
 async function handleVerifyComplete(request, env, origin) {
   if (!env || !env.DB || typeof env.DB.prepare !== "function") return json({ error: "Live Identity Check storage is not connected." }, 503, origin);
   let body;
@@ -1314,7 +1335,7 @@ export default {
       if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "This website is not allowed to use this service." }, 403, origin);
       return handleVerifyCheck(env, origin, url);
     }
-    if (path !== "/" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent" && path !== "/verify/complete" && path !== "/verify/location") return json({ error: "Not found." }, 404, origin);
+    if (path !== "/" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent" && path !== "/verify/complete" && path !== "/verify/skip" && path !== "/verify/location") return json({ error: "Not found." }, 404, origin);
     if (request.method !== "POST") return json({ error: "Please use POST." }, 405, origin);
 
     // Only the ScamSense site may call this from a browser (CORS is NOT authentication)
@@ -1323,6 +1344,7 @@ export default {
     if (path === "/verify/create") return handleVerifyCreate(request, env, origin);
     if (path === "/verify/consent") return handleVerifyConsent(request, env, origin);
     if (path === "/verify/complete") return handleVerifyComplete(request, env, origin);
+    if (path === "/verify/skip") return handleVerifySkip(request, env, origin);
     if (path === "/verify/location") return handleVerifyLocation(request, env, origin);
     if (path === "/connect/investigate") return handleInvestigate(request, env, origin);
     if (path === "/connect/analyze-image") return handleAnalyzeImage(request, env, origin);
