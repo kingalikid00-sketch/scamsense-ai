@@ -1134,10 +1134,15 @@ async function handleChatImage(request, env, origin) {
    return await env.DB.prepare("SELECT id, status, created_at, expires_at, consent_at, completed_at FROM verification_requests WHERE token_hash = ? LIMIT 1")
      .bind(tokenHash).first();
  }
+ // D1 schema setup is cached per Worker isolate. Do not run table DDL or a
+ // full-table expiry DELETE on every visitor request; that creates avoidable
+ // database contention when many people open links at once.
+ let verifyLocationTableReady = false;
  async function ensureVerifyLocationTable(env) {
-  await env.DB.prepare("CREATE TABLE IF NOT EXISTS verification_locations (request_id TEXT PRIMARY KEY, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_m REAL, shared_at TEXT NOT NULL, expires_at TEXT NOT NULL)").run();
-  await env.DB.prepare("DELETE FROM verification_locations WHERE expires_at <= ?").bind(new Date().toISOString()).run();
-}
+   if (verifyLocationTableReady) return;
+   await env.DB.prepare("CREATE TABLE IF NOT EXISTS verification_locations (request_id TEXT PRIMARY KEY, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_m REAL, shared_at TEXT NOT NULL, expires_at TEXT NOT NULL)").run();
+   verifyLocationTableReady = true;
+ }
 async function readVerifyLocation(env, requestId) {
   try {
     await ensureVerifyLocationTable(env);
