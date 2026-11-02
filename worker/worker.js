@@ -1125,7 +1125,7 @@ async function handleChatImage(request, env, origin) {
      console.error("Live Identity Check: could not save request");
      return json({ error: "We could not create the request. Please try again." }, 500, origin);
    }
-   const link = "https://kingalikid00-sketch.github.io/scamsense-ai/live-check.html?token=" + encodeURIComponent(token);
+   const link = "https://scamsense-ai.kingalikid00.workers.dev/v/" + encodeURIComponent(token);
    return json({ request_id: id, link, expires_at: expires.toISOString(), expires_in_minutes: 30, status: "pending",
      note: "This link records consent only. It does not confirm identity or detect a live person." }, 201, origin);
  }
@@ -1290,6 +1290,18 @@ export default {
       const len = upstream.headers.get("Content-Length");
       if (len) headers.set("Content-Length", len);
       return new Response(request.method === "HEAD" ? null : upstream.body, { status: 200, headers });
+    }
+
+    // Short, shareable verification links. The random token remains the only access key.
+    const shortMatch = path.match(/^\/v\/([A-Za-z0-9_-]{40,60})$/);
+    if (shortMatch && request.method === "GET") {
+      const target = "https://kingalikid00-sketch.github.io/scamsense-ai/live-check.html?token=" + encodeURIComponent(shortMatch[1]);
+      return new Response(null, { status: 302, headers: {
+        "Location": target,
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff"
+      }});
     }
 
     if (path === "/verify/check") {
