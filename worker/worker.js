@@ -1297,6 +1297,23 @@ export default {
 
     const path = url.pathname;
 
+    // Android Digital Asset Links: verifies that this app may open Live Identity Check links.
+    if (path === "/.well-known/assetlinks.json") {
+      if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
+      const statements = [{
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: "com.scamsense.ai",
+          sha256_cert_fingerprints: ["8A:3F:CE:23:D7:64:EA:BC:04:23:3A:D5:F5:EE:AF:25:C8:69:48:FC:F4:95:3A:83:94:3D:6C:81:22:12:60:85"]
+        }
+      }];
+      return new Response(request.method === "HEAD" ? null : JSON.stringify(statements), {
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "public, max-age=3600" }
+      });
+    }
+
     // Serve the pinned 12.5 MB PE-Core Tiny model through this Worker.
     // The model runs locally in the browser; image data is never sent here.
     if (path === "/detector-model") {
