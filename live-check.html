@@ -35,6 +35,7 @@ button:disabled{opacity:.55;cursor:default}
 <video id="camera" autoplay muted playsinline></video>
 <button id="startCamera">Turn on camera</button>
 <button id="finish" disabled>Finish camera session</button>
+<button id="skipCamera" class="secondary" type="button">Continue without camera</button>
 <button id="shareLocation" class="secondary" type="button">Share my approximate location</button>
 <p id="locationInfo" class="small" aria-live="polite">Your location is not shared unless you tap the button and allow it.</p>
 </div>
@@ -48,6 +49,7 @@ const token=new URLSearchParams(location.search).get("token")||"";
 const agree=document.getElementById("agree"),decline=document.getElementById("decline"),status=document.getElementById("status"),details=document.getElementById("details");
 const cameraStep=document.getElementById("cameraStep"),video=document.getElementById("camera"),start=document.getElementById("startCamera"),finish=document.getElementById("finish");
 const shareLocation=document.getElementById("shareLocation"),locationInfo=document.getElementById("locationInfo");
+const skipCamera=document.getElementById("skipCamera");
 let usable=false,stream=null,consented=false,done=false,locationShared=false;
 function say(t){status.textContent=t}
 function stopCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}video.srcObject=null;video.style.display="none";finish.disabled=true}
@@ -58,6 +60,7 @@ fetch(API+"/verify/check?token="+encodeURIComponent(token),{cache:"no-store"})
 .then(r=>{
  if(r.status==="expired"){details.textContent="This request has expired.";say("Ask for a new link.");return}
  if(r.status==="completed"){details.textContent="This camera session was already completed.";say("No identity or liveness test was performed.");return}
+ if(r.status==="skipped"){details.textContent="This request was completed without using the camera.";say("No camera or identity check was performed.");return}
  if(r.status==="consented"){consented=true;showCameraStep();details.textContent="Consent was already recorded. You can continue with the camera or location.";if(r.location){locationShared=true;locationInfo.textContent="Approximate location has already been shared.";shareLocation.disabled=true;}return}
  if(r.status!=="pending"){details.textContent="This request is no longer available.";say("Ask for a new link if needed.");return}
  usable=true;agree.disabled=false;details.textContent="This request is valid for a limited time. Read the privacy note before choosing.";
@@ -98,6 +101,15 @@ start.addEventListener("click",async function(){
   video.srcObject=stream;video.style.display="block";
   await video.play();finish.disabled=false;say("Camera preview is on this phone. No picture or video is being sent.");
  }catch(e){stopCamera();start.disabled=false;say(e&&e.name==="NotAllowedError"?"Camera permission was blocked. On Android, close floating bubbles or the round button from other apps, then reopen this link in Chrome and tap “Turn on camera”. On iPhone, open the link in Safari and allow Camera access in Settings if asked. Nothing was recorded.":e&&e.name==="NotFoundError"?"No camera was found on this device.":e&&e.name==="NotReadableError"?"The camera is busy. Close other apps using the camera, then try again.":e&&e.name==="SecurityError"?"The browser blocked camera access. Open the HTTPS link directly in Safari (iPhone) or Chrome (Android).": "We could not open the camera. Check your browser’s camera permission and close other apps using the camera, then try again.");}
+});
+skipCamera.addEventListener("click",async function(){
+ if(!consented||done)return;
+ skipCamera.disabled=true;start.disabled=true;finish.disabled=true;say("Saving your choice…");
+ try{
+  const response=await fetch(API+"/verify/skip",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token})});
+  const result=await response.json();if(!response.ok)throw new Error(result.error||"Could not save your choice.");
+  done=true;stopCamera();details.textContent="You continued without using the camera.";say("Your choice was saved. No camera, picture, video, identity or liveness check was used.");lock();
+ }catch(e){skipCamera.disabled=false;start.disabled=false;say(e.message||"We could not save your choice. Please try again.");}
 });
 finish.addEventListener("click",async function(){
  if(!consented||!stream||done)return;
