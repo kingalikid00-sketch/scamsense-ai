@@ -89,10 +89,12 @@ agree.addEventListener("click",function(){
 decline.addEventListener("click",function(){usable=false;lock();details.textContent="You chose not to take part.";say("No consent was recorded. You can close this page.");});
 start.addEventListener("click",async function(){
  if(!consented||done)return;
- if(!window.isSecureContext){say("Camera access needs a secure HTTPS page. Reopen the original ScamSense link.");return}\n if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say("This browser cannot open the camera. Open this link in Safari on iPhone or Chrome on Android, then try again.");return}
+ if(!window.isSecureContext){say("Camera access needs a secure HTTPS page. Reopen the original ScamSense link.");return}
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say("This browser cannot open the camera. Open this link in Safari on iPhone or Chrome on Android, then try again.");return}
  start.disabled=true;say("Waiting for camera permission…");
  try{
-  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"user"}},audio:false});}\n  catch(firstError){if(firstError&&firstError.name==="OverconstrainedError"){stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});}else{throw firstError;}}
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"user"}},audio:false});}
+  catch(firstError){if(firstError&&firstError.name==="OverconstrainedError"){stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});}else{throw firstError;}}
   video.srcObject=stream;video.style.display="block";
   await video.play();finish.disabled=false;say("Camera preview is on this phone. No picture or video is being sent.");
  }catch(e){stopCamera();start.disabled=false;say(e&&e.name==="NotAllowedError"?"Camera permission was blocked. On Android, close floating bubbles or the round button from other apps, then reopen this link in Chrome and tap “Turn on camera”. On iPhone, open the link in Safari and allow Camera access in Settings if asked. Nothing was recorded.":e&&e.name==="NotFoundError"?"No camera was found on this device.":e&&e.name==="NotReadableError"?"The camera is busy. Close other apps using the camera, then try again.":e&&e.name==="SecurityError"?"The browser blocked camera access. Open the HTTPS link directly in Safari (iPhone) or Chrome (Android).": "We could not open the camera. Check your browser’s camera permission and close other apps using the camera, then try again.");}
