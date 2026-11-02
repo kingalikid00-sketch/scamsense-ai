@@ -31,7 +31,7 @@ button:disabled{opacity:.55;cursor:default}
 <button id="decline" class="secondary" type="button">No thanks</button>
 <div id="cameraStep" class="hidden">
 <p style="margin:16px 0 4px"><b>Camera session</b></p>
-<p>Camera and location are separate choices. You can share either one, both, or neither.</p>
+<p>Camera and location are separate choices. You can share either one, both, or neither. On iPhone, open this link in Safari. On Android, open it in Chrome. Do not use an in-app browser.</p>
 <video id="camera" autoplay muted playsinline></video>
 <button id="startCamera">Turn on camera</button>
 <button id="finish" disabled>Finish camera session</button>
@@ -76,7 +76,7 @@ shareLocation.addEventListener("click",function(){
   }catch(e){shareLocation.disabled=false;locationInfo.textContent=e.message||"We could not share your location. Try again.";}
  },function(err){
   shareLocation.disabled=false;
-  locationInfo.textContent=err&&err.code===1?"Location permission was not allowed. Nothing was shared.": "We could not get your location. Check your phone’s location setting and try again.";
+  locationInfo.textContent=err&&err.code===1?"Location permission was blocked. Allow location for this site in your browser settings, then try again. Nothing was shared.":err&&err.code===2?"Your location is unavailable. Turn on Location Services and try again.":"We could not get your location. Check your phone’s location setting and browser permission, then try again.";
  },{enableHighAccuracy:false,timeout:15000,maximumAge:60000});
 });
 agree.addEventListener("click",function(){
@@ -89,13 +89,13 @@ agree.addEventListener("click",function(){
 decline.addEventListener("click",function(){usable=false;lock();details.textContent="You chose not to take part.";say("No consent was recorded. You can close this page.");});
 start.addEventListener("click",async function(){
  if(!consented||done)return;
- if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say("Camera access is not supported in this browser. Try opening the link in Chrome.");return}
+ if(!window.isSecureContext){say("Camera access needs a secure HTTPS page. Reopen the original ScamSense link.");return}\n if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say("This browser cannot open the camera. Open this link in Safari on iPhone or Chrome on Android, then try again.");return}
  start.disabled=true;say("Waiting for camera permission…");
  try{
-  stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:false});
+  try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"user"}},audio:false});}\n  catch(firstError){if(firstError&&firstError.name==="OverconstrainedError"){stream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});}else{throw firstError;}}
   video.srcObject=stream;video.style.display="block";
   await video.play();finish.disabled=false;say("Camera preview is on this phone. No picture or video is being sent.");
- }catch(e){stopCamera();start.disabled=false;say(e&&e.name==="NotAllowedError"?"Your phone blocked the camera permission. Close any floating bubbles or screen overlays from other apps (including the round button on the screen), then tap “Turn on camera” again. Nothing was recorded.":"We could not open the camera. Check that no other app is using it, then try again.");}
+ }catch(e){stopCamera();start.disabled=false;say(e&&e.name==="NotAllowedError"?"Camera permission was blocked. On Android, close floating bubbles or the round button from other apps, then reopen this link in Chrome and tap “Turn on camera”. On iPhone, open the link in Safari and allow Camera access in Settings if asked. Nothing was recorded.":e&&e.name==="NotFoundError"?"No camera was found on this device.":e&&e.name==="NotReadableError"?"The camera is busy. Close other apps using the camera, then try again.":e&&e.name==="SecurityError"?"The browser blocked camera access. Open the HTTPS link directly in Safari (iPhone) or Chrome (Android).": "We could not open the camera. Check your browser’s camera permission and close other apps using the camera, then try again.");}
 });
 finish.addEventListener("click",async function(){
  if(!consented||!stream||done)return;
