@@ -95,7 +95,7 @@ start.addEventListener("click",async function(){
   stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"},audio:false});
   video.srcObject=stream;video.style.display="block";
   await video.play();finish.disabled=false;say("Camera preview is on this phone. No picture or video is being sent.");
- }catch(e){stopCamera();start.disabled=false;say(e&&e.name==="NotAllowedError"?"Camera permission was not allowed. You can allow it in your browser settings and try again.":"We could not open the camera. Please try again.");}
+ }catch(e){stopCamera();start.disabled=false;say(e&&e.name==="NotAllowedError"?"Your phone blocked the camera permission. Close any floating bubbles or screen overlays from other apps (including the round button on the screen), then tap “Turn on camera” again. Nothing was recorded.":"We could not open the camera. Check that no other app is using it, then try again.");}
 });
 finish.addEventListener("click",async function(){
  if(!consented||!stream||done)return;
