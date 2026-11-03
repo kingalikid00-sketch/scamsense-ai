@@ -2432,7 +2432,7 @@ return '<div class="stp '+st+'">'+ic+'<span>'+s+'</span></div>'}).join('');
 var _go=go;go=function(v){S.runTok++;_go(v)};
 
 /* ---------- header names and back targets for the new screens ---------- */
-var NEWNAMES={fw:'Before you pay',trace:'Image Trace',auth:'Image Authenticity',money:'Money Check',cases:'Cases',case:'Case',case_new:'New case',case_add:'Add to case',case_pick:'Add to a case',vr_intro:'Verification request',vr_consent:'Before you start',vr_live:'Live check',vr_prog:'Checking',vr_result:'Verification result'};
+var NEWNAMES={fw:'Before you pay',trace:'Online Photo Search',auth:'Image Authenticity',money:'Money Check',cases:'Cases',case:'Case',case_new:'New case',case_add:'Add to case',case_pick:'Add to a case',vr_intro:'Verification request',vr_consent:'Before you start',vr_live:'Live check',vr_prog:'Checking',vr_result:'Verification result'};
 function headerName(v){
 var n={chat:'ScamSense AI',menu:'ScamSense AI',cats:'Add to check',person:'Check a person',picture:'Check a picture',emergency:'Get help',verify:'Live Identity Check',history:'Chat History',saved:'Saved Scans',savedDetail:'Saved Investigation',settings:'Settings'};
 return n[v]||NEWNAMES[v]||'ScamSense AI';
@@ -2877,17 +2877,17 @@ return title('Live Identity Check','Result')
 /* ----- Feature 2: Image Trace ----- */
 Views.trace=function(){
 var T=S.trace;
-if(T.stage==='run')return title('Searching','Demo trace in progress')+demoBox('Demo. No image search is running. This only shows how results would look.')+'<div style="height:14px"></div>'+stepsView(TRACE_STEPS,S.stepIdx||0);
-if(T.stage==='done'&&T.res)return traceResults();
-var tiles=T.imgs.map(function(o,i){return '<div class="th"><img src="'+o.url+'" alt="Picture '+(i+1)+'"><button class="ib" data-act="tr-rm" data-arg="'+i+'" aria-label="Remove picture '+(i+1)+'">'+I('x','aria-hidden="true"')+'</button></div>'}).join('');
-var add=T.imgs.length<3?'<button class="th add" data-act="tr-add" aria-label="Add a picture">'+I('upload','aria-hidden="true" style="font-size:24px"')+'<span>'+T.imgs.length+'/3</span></button>':'';
-return vm()+title('Trace this picture','See if a picture appears publicly elsewhere.')
-+'<div style="margin:0 0 12px">Add 1 to 3 pictures of the person. Clear, close-up pictures work best.</div>'
+if(T.stage==='shared')return vm()+title('Ready to search online','Your picture is ready. Choose a search service below.')
++warnBox('Online Photo Search opens an external search service. ScamSense does not receive its results, and a match does not identify who owns an account. Only share a picture you have permission to use.','Before you continue')
++prim('Open Google Lens','tr-open-lens')+sec('Open Bing Visual Search','tr-open-bing')
++sec('Choose another picture','tr-reset')+sec('Back to chat','chat');
+var tiles=T.imgs.map(function(o,i){return '<div class="th"><img src="'+o.url+'" alt="Selected picture"><button class="ib" data-act="tr-rm" data-arg="'+i+'" aria-label="Remove picture">'+I('x','aria-hidden="true"')+'</button></div>'}).join('');
+var add=!T.imgs.length?'<button class="th add" data-act="tr-add" aria-label="Choose a picture">'+I('upload','aria-hidden="true" style="font-size:24px"')+'<span>Choose picture</span></button>':'';
+return vm()+title('Online Photo Search','Check whether the same or a similar picture appears publicly online.')
++'<div style="margin:0 0 12px">Choose one picture. ScamSense will prepare it for an external image-search service.</div>'
 +'<div class="thr">'+tiles+add+'</div>'
-+sect('Name or alias they use (optional)')+fld('tr.alias','For example, the name on their profile')
-+'<div class="demo" style="margin:0 0 14px">'+I('flask','aria-hidden="true"')+' Image Trace isn’t connected to a search service yet. You’ll see demo results.</div>'
-+prim('Start demo trace','tr-start',undefined,!T.imgs.length)
-+'<div class="rs" style="text-align:center">Your pictures stay on this device in this prototype.</div>';
++prim('Continue','tr-start',undefined,!T.imgs.length)
++'<div class="rs" style="margin-top:10px">No face identification or real-name lookup. Search results can be incomplete or misleading.</div>';
 };
 function traceResults(){
 var T=S.trace,R=T.res;
@@ -3064,6 +3064,7 @@ return '<div class="hm"><div class="hm-top"></div><div class="hm-intro"><img src
 
 
 +pillD('#14B8A6','shield-check','Can I trust this proof?','Check a screenshot, receipt, or document.','h-proof')
++pillD('#7C3AED','photo-search','Online Photo Search','See whether this picture appears elsewhere online.','pic-trace')
 +pillD('#0EA5E9','help','Ask ScamSense','Ask anything about a scam or suspicious situation.','ask')
 +'</div></div>'};
 
@@ -3112,11 +3113,14 @@ add_ver:function(){var r=S.vf.res;if(!r)return;attach([mkItem('analysis','demo',
 'tr-rm':function(i){S.trace.imgs.splice(+i,1);render()},
 'tr-start':function(){
 var T=S.trace;if(!T.imgs.length)return;
-var alias=(S.f['tr.alias']||'').trim();
-T.stage='run';T.res=null;
-var p=Services.trace.search(T.imgs,alias);
-runSteps(TRACE_STEPS,800,function(){p.then(function(r){T.res=r;T.stage='done';report('trace',r);go('trace')})});
+T.stage='shared';render();
+var f=T.imgs[0].file;
+try{if(f&&navigator.share&&navigator.canShare&&navigator.canShare({files:[f]})){
+navigator.share({files:[f],title:'Search this picture online',text:'Look for public copies or similar images.'}).catch(function(){});
+}}catch(e){}
 },
+ 'tr-open-lens':function(){window.open('https://lens.google.com/','_blank','noopener');},
+ 'tr-open-bing':function(){window.open('https://www.bing.com/visualsearch','_blank','noopener');},
 'tr-reset':function(){S.trace={imgs:[],stage:'setup',res:null,from:S.trace.from};S.f['tr.alias']='';go('trace')},
 add_trace:function(){
 var T=S.trace;if(!T.res)return;
