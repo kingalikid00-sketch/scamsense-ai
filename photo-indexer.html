@@ -58,7 +58,7 @@ var h='';for(var i=0;i<64;i+=4)h+=parseInt(b.slice(i,i+4),2).toString(16);resolv
 }catch(e){reject(new Error('Image pixels could not be read.'))}};
 img.onerror=function(){reject(new Error('Image could not be loaded.'))};img.src=url;
 })}
-function clean(v){return String(v||'').replace(/<[^>]*>/g,' ').replace(/\\s+/g,' ').trim()}
+function clean(v){return String(v||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim()}
 function meta(m,k){return m&&m[k]?clean(m[k].value):''}
 $('indexCommons').addEventListener('click',async function(){
 var secret=$('secret').value.trim(),topic=$('commonsTopic').value.trim(),btn=this;
