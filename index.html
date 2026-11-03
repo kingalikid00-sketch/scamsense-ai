@@ -3057,7 +3057,7 @@ var _emergency=Views.emergency;Views.emergency=function(){return _emergency()+'<
 /* ----- HOME SCREEN UI (ChatGPT-style) + THEME. Wraps existing views; no existing logic changed ----- */
 var _chatView=Views.chat;
 Views.chat=function(){
-if(S.cur.msgs.length)return _chatView();
+if(S.cur.msgs.length)return _chatView()+'<div style="padding:10px 14px 18px">'+pillD('#7C3AED','photo-search','Online Photo Search','Find public webpages containing these pictures.','pic-trace')+'</div>';
 return '<div class="hm"><div class="hm-top"></div><div class="hm-intro"><img src="'+LOGO_URI+'" alt="ScamSense logo" width="120" height="120" style="display:block;width:clamp(84px,17vh,120px);height:auto;margin:0 auto 14px"><div class="t">I’m your AI scam detection assistant.</div><div class="s">Ask me about scams, share a message, upload a screenshot, or just have a chat.</div></div><div class="hm-list" role="list" aria-label="ScamSense options">'
 
 
@@ -4142,7 +4142,7 @@ case 'h-link':ACTIONS.check_link.run();break;
 case 'h-person':go('person');break;
 case 'h-em':go('emergency');break;
 case 'h-proof':ACTIONS.check_proof.run();break;
-case 'pic-trace':pickWith('trace');break;
+case 'pic-trace':S.trace={imgs:[],stage:'setup',res:null,from:'picture'};go('trace');break;
 case 'pic-auth':pickWith('auth');break;
 case 'pic-scam':pickWith('scam');break;
 case 'pic-unsure':expect('story','Tell me what you’re worried about. You can also add the picture with the picture button.','Tell me what you’re worried about');break;
