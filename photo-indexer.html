@@ -22,7 +22,16 @@
 <button id="add">Add to ScamSense index</button>
 <div id="status" class="muted" role="status"></div>
 </div>
-<p class="muted">The image itself is processed in this browser. ScamSense stores its perceptual hash and the public image/page links, not the uploaded file.</p>
+<div class="box">
+<h2 style="font-size:19px;margin:0 0 6px">Build the public image index</h2>
+<p class="muted">Find openly licensed images on Wikimedia Commons and add them to ScamSense automatically. This gives Photo Search real indexed images to compare against; it does not search the whole internet.</p>
+<label for="commonsTopic">What kind of public images should we index?</label>
+<input id="commonsTopic" maxlength="100" value="portrait photograph" placeholder="e.g. portrait photograph">
+<button id="indexCommons" type="button">Find and index up to 12 public images</button>
+<div id="commonsStatus" class="muted" role="status"></div>
+<div id="commonsItems"></div>
+</div>
+<p class="muted">The image itself is processed in this browser. ScamSense stores its perceptual hash and the public image/page links, not the uploaded file. The automatic indexer only adds public Wikimedia Commons images with a recognised free licence.</p>
 <script>
 (function(){
 var $=function(id){return document.getElementById(id)}, file=null;
@@ -40,6 +49,44 @@ var h='';for(var i=0;i<64;i+=4)h+=parseInt(b.slice(i,i+4),2).toString(16);URL.re
 }catch(e){URL.revokeObjectURL(url);reject(e)}};
 img.onerror=function(){URL.revokeObjectURL(url);reject(new Error('The image could not be read.'))};img.src=url;
 })}
+function hashUrl(url){return new Promise(function(resolve,reject){
+var img=new Image();img.crossOrigin='anonymous';
+img.onload=function(){try{var c=document.createElement('canvas');c.width=9;c.height=8;var x=c.getContext('2d',{willReadFrequently:true});x.drawImage(img,0,0,9,8);var d=x.getImageData(0,0,9,8).data,b='';
+for(var y=0;y<8;y++)for(var xx=0;xx<8;xx++){var a=(y*9+xx)*4,z=a+4;b+=(d[a]*.3+d[a+1]*.59+d[a+2]*.11)>(d[z]*.3+d[z+1]*.59+d[z+2]*.11)?'1':'0'}
+var h='';for(var i=0;i<64;i+=4)h+=parseInt(b.slice(i,i+4),2).toString(16);resolve(h);
+}catch(e){reject(new Error('Image pixels could not be read.'))}};
+img.onerror=function(){reject(new Error('Image could not be loaded.'))};img.src=url;
+})}
+function clean(v){return String(v||'').replace(/<[^>]*>/g,' ').replace(/\\s+/g,' ').trim()}
+function meta(m,k){return m&&m[k]?clean(m[k].value):''}
+$('indexCommons').addEventListener('click',async function(){
+var secret=$('secret').value.trim(),topic=$('commonsTopic').value.trim(),btn=this;
+if(!secret||!topic){$('commonsStatus').textContent='Enter the index key and a topic first.';return}
+btn.disabled=true;$('commonsItems').textContent='';$('commonsStatus').textContent='Searching Wikimedia Commons…';
+var added=0,skipped=0;
+try{
+var u=new URL('https://commons.wikimedia.org/w/api.php');
+u.search=new URLSearchParams({action:'query',format:'json',origin:'*',generator:'search',gsrsearch:'filetype:bitmap '+topic,gsrnamespace:'6',gsrlimit:'12',prop:'imageinfo',iiprop:'url|extmetadata',iiurlwidth:'320'}).toString();
+var response=await fetch(u);if(!response.ok)throw new Error('Wikimedia Commons search is unavailable.');
+var data=await response.json(),pages=Object.values(data.query&&data.query.pages||{});
+if(!pages.length){$('commonsStatus').textContent='No public images found for that topic. Try another topic.';return}
+$('commonsStatus').textContent='Checking licences and indexing '+pages.length+' public images…';
+for(var i=0;i<pages.length;i++){
+var p=pages[i],info=p.imageinfo&&p.imageinfo[0],m=info&&info.extmetadata||{};
+var license=meta(m,'LicenseShortName'),terms=meta(m,'UsageTerms'),artist=meta(m,'Artist');
+if(!info||!info.thumburl||!info.descriptionurl||!/cc0|public domain|cc by|cc-by/i.test((license+' '+terms).toLowerCase())){skipped++;continue}
+try{
+var imageHash=await hashUrl(info.thumburl),source=('Wikimedia Commons · '+license+(artist?' · '+artist:'')).slice(0,120);
+var saved=await fetch('https://scamsense-ai.kingalikid00.workers.dev/photo-index',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+secret},body:JSON.stringify({hash:imageHash,imageUrl:info.thumburl,pageUrl:info.descriptionurl,title:(p.title+' ['+license+']').slice(0,240),source:source})});
+var result=await saved.json();if(!saved.ok)throw new Error(result.error||'Index write failed');
+added++;var row=document.createElement('div');row.className='muted';row.style.padding='7px 0';row.textContent='✓ '+p.title+' — '+license;$('commonsItems').appendChild(row);
+}catch(e){skipped++}
+await new Promise(function(r){setTimeout(r,150)});
+}
+$('commonsStatus').textContent='Finished: '+added+' images added; '+skipped+' skipped. These images can now be matched by ScamSense Photo Search. This is not a web-wide search.';
+}catch(e){$('commonsStatus').textContent='Indexing stopped: '+(e.message||e)}
+finally{btn.disabled=false}
+});
 $('add').addEventListener('click',async function(){
 var secret=$('secret').value.trim(),imageUrl=$('imageUrl').value.trim(),pageUrl=$('pageUrl').value.trim();
 if(!secret||!file||!imageUrl||!pageUrl){$('status').textContent='Enter the key, choose an image, and provide both public links.';return}
