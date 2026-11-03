@@ -1,0 +1,36 @@
+name: ScamSense public photo index
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 2 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scamsense-photo-index
+  cancel-in-progress: false
+
+jobs:
+  index-public-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install image processing dependency
+        run: npm install --no-save sharp
+
+      - name: Index openly licensed public images
+        env:
+          PHOTO_INDEX_KEY: ${{ secrets.PHOTO_INDEX_KEY }}
+          PHOTO_INDEX_WORKER_URL: https://scamsense-ai.kingalikid00.workers.dev
+          MAX_IMAGES_PER_CATEGORY: "30"
+        run: node tools/photo-indexer.mjs
