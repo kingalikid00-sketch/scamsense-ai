@@ -1085,7 +1085,7 @@ WHEN THEY WANT HELP WITH A POSSIBLE SCAM:
 - Payments: figure out whether they are just talking about money, asking about a real transaction, or describing a suspicious request. If suspicious, say "I'd pause before paying" and list the specific warning signs (pressure, paying first, unusual payment method, secrecy, a story that keeps changing).
 - Messages: look for pressure, urgency, threats, unusual payment requests, requests for passwords or codes, impersonation, fake jobs, fake prizes, fake investments, romance manipulation, fake support, delivery or customs fees, moving the chat elsewhere, secrecy, and suspicious links. Explain the actual evidence in their text.
 - Links: you cannot open pages. The app only checks the text of the address. Say what was checked and what was not (where it leads, how old the site is). Never claim a page is safe or dangerous for sure.
-- Pictures: describe only what you can really see. You cannot run a reverse image search. ScamSense Image Trace is not connected, so never invent matches or sources. Image Authenticity checks C2PA Content Credentials locally. It does not directly detect Google SynthID or every provider’s invisible watermark. Describe only the result supplied by the app. Missing credentials do not prove an image is real or AI-generated. Never say "definitely real" or "definitely fake". A picture matching someone does not mean that person controls the account. You can suggest the user try a public reverse image search such as Google Lens or TinEye themselves.
+- Pictures: ScamSense Photo Search can compare an uploaded picture with public images already in ScamSense's own index. When someone wants to find where a picture appears, offer the in-app Photo Search action (trace_pic); do not send them to Google Labs, Google Lens, or another external search page. Be honest that results cover indexed sources only, not the whole internet. Never invent matches or sources. A visual match is not proof of who owns an account. Image Authenticity checks C2PA Content Credentials locally. It does not directly detect Google SynthID or every provider’s invisible watermark. Missing credentials do not prove an image is real or AI-generated. Never say "definitely real" or "definitely fake".
 - Verifying a person: Live Identity Check lets a person voluntarily complete a live check, so the user can see whether a real person took part. It is a demo in this prototype. Keep four things separate: live presence, face similarity, identity, and account ownership. A pass does not prove legal identity or account ownership.
 - Checking a person: ask what they want to check (verify them, their picture, their profile, or what they said) or let them tell you what happened.
 
@@ -1759,7 +1759,7 @@ check_link_ask:'They mention a link but did not paste it. Ask them to send the l
 link_mention:'They shared a link in passing. Do not assume they want it checked and do not call it dangerous. Respond to what they said; if it seems natural, offer to check the link. Add actions:check_link only if you offer.',
 check_picture:'A picture is attached and they want it checked. If they are asking whether the person in it is real, treat it as a question about that person and say what you can and cannot tell from one picture. Describe only what you actually see (text, logos, chat screenshots, payment requests). If it is a screenshot of a message, analyze that message. Say what you cannot verify. Use the analysis format.',
 check_picture_ask:'They want a picture checked but nothing is attached. Ask them to add it with the picture button, and ask where they got it if that would help. Short.',
-image_trace:'They want to know if this picture is used elsewhere. ScamSense Image Trace is not connected in this prototype and you cannot search the web. Say so plainly, describe what you can see, suggest they try a public reverse image search (Google Lens or TinEye), and ask where they got the picture. Do not invent any match or source.',
+image_trace:'They want to know if this picture appears elsewhere. Offer the in-app ScamSense Photo Search action (trace_pic). Explain briefly that it compares the picture with ScamSense\'s indexed public sources only, not the entire internet. Never direct them to Google Labs or Google Lens and never invent matches.',
 image_auth:'They ask whether this picture is AI-generated or edited. ScamSense Image Authenticity checks C2PA Content Credentials on the device when the dedicated check is run. It does not directly detect Google SynthID or every provider’s invisible watermark. Do not claim the picture is real or AI-generated from missing credentials. Do not claim you personally analysed an image from chat alone. is not proof either way.',
 check_person:'They want to check a person. Ask what they would like to check about this person (verify them, check their picture, check their profile, or check what they said) or invite them to tell you what happened. Keep it short and add actions:verify_person,check_picture,check_message.',
 verify_person:'They want to verify a person. Explain Live Identity Check simply: the other person can voluntarily complete a live check so the user can see whether a real person completed it. Keep live presence, face similarity, identity, and account ownership separate, and say it does not prove legal identity or account ownership. It is a demo in this prototype. Add actions:verify_person.',
@@ -3349,7 +3349,7 @@ ACTIONS.auth_pic.run=function(){ChatTools.authFromChat()};
 Flow['p-verify']=function(){S.vBack='person';go('verify')};
 
 var TOOLKEY={check_payment:'money',trace_pic:'trace',auth_pic:'auth',verify_person:'verify'};
-var TOOLNAME={money:'Money Check',trace:'Image Trace (demo)',auth:'Image Authenticity (on-device AI estimate)',verify:'Live Identity Check (demo)'};
+var TOOLNAME={money:'Money Check',trace:'ScamSense Photo Search (indexed sources)',auth:'Image Authenticity (on-device AI estimate)',verify:'Live Identity Check (demo)'};
 function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s}
 function ensureSession(title){if(!S.cur.title){S.cur.title=title;S.sessions.push(S.cur)}}
 
@@ -3551,14 +3551,15 @@ if(/\b(payment|money request|transfer|invoice)\b/i.test(t)){ctx.expect='story';r
 if(/\b(message|messages|text|msg|dm|email|chat)\b/i.test(t)){ctx.expect='message';return 'message'}
 return '';
 },
-traceLines:function(){return['**Image Trace isn’t connected yet**','No web or image search was run, so I can’t say where this picture appears or whether someone else uses it.','','**What you can do now**','- Upload the picture to Google Lens or TinEye yourself and look for the same photo on other accounts or older dates.','- Tell me what you find and I’ll help you read it.','','Finding a photo somewhere else wouldn’t prove who owns the account. It’s a clue, not an answer.']},
+traceLines:function(){return['**ScamSense Photo Search**','Search the picture against public images already added to ScamSense’s index. The results cover indexed sources only, not the entire internet.','A visual match is a clue, not proof of who owns an account.']},
 traceUnavailable:function(){
 if(S.busy)return;
 ensureSession('Picture check');
 Concierge.facts().pic=true;
-var txt=this.card(this.traceLines(),['auth_pic']);
-this.learn('trace','Image trace is not connected, so no search ran. The person was pointed to Google Lens or TinEye.');
-this.record(txt,'[App note: the person asked to trace a picture. Image Trace is not connected, so no search ran.]');
+var li=S.cur&&S.cur.ctx&&S.cur.ctx.lastImg;
+S.trace={imgs:[],stage:'setup',res:null,from:'chat'};
+if(li&&li.file&&li.url)S.trace.imgs.push({file:li.file,url:li.url,hash:null});
+go('trace');
 },
 scan:async function(){
 var li=S.cur.ctx.lastImg;
@@ -3586,8 +3587,8 @@ pic:async function(route,t){
 var i=route.intent,f=Concierge.facts();
 if(i==='image_trace'){
 f.pic=true;
-var tt=this.card(this.traceLines(),['auth_pic']);
-this.learn('trace','Image trace is not connected, so no search ran. The person was pointed to Google Lens or TinEye.');
+var tt=this.card(this.traceLines(),['trace_pic']);
+this.learn('trace','ScamSense Photo Search compares the picture with the app’s indexed public image sources.');
 return{only:true,text:tt};
 }
 if(i!=='image_auth'&&i!=='check_picture')return null;
