@@ -2898,15 +2898,15 @@ return '<div class="card"><div style="display:flex;gap:12px;align-items:center;m
 +'<div class="h" style="margin-top:10px">Why this would matter</div><div style="color:#C9D6F5;font-size:15px">'+esc(m.why)+'</div></div>';
 }).join('');
 var none=[];for(var i=0;i<R.count;i++){if(!R.matches.some(function(m){return m.img===i}))none.push(i+1)}
-return title('Trace results','Demo results')
+return title('Photo search results','Example layout')
 +demoBox('Demo results. No image search was run. Nothing below is a real match or a real source.')
 +'<div style="height:12px"></div>'
-+warnBox('Finding this picture somewhere else does not prove that the person in the suspicious account owns that other profile.','Important')
+
 +(R.alias?card('<div class="rs">Name or alias you entered</div><div style="font-weight:600">'+esc(R.alias)+'</div><div class="rs">This is your input. ScamSense hasn’t checked it against anything.</div>'):'')
-+sect('Image reuse is not identity')+'<div style="color:#B4C3E8;margin:0 0 10px">A picture can appear in many places for many reasons. Seeing it elsewhere is a clue to look into. It doesn’t tell you who is behind any account.</div>'
++sect('Review the results')+'<div style="color:#B4C3E8;margin:0 0 10px">Compare the photos, page names and public profile details. Open the source links to see where each picture appears. You decide which results are relevant.</div>'
 +sect('Possible image matches (placeholders)')+(cards||'<div class="rs">No sample matches.</div>')
 +(none.length?'<div class="rs" style="margin:0 0 12px">No sample matches in this demo for picture'+(none.length>1?'s ':' ')+none.join(', ')+'.</div>':'')
-+sect('What you can do now')+bullets(['Try a public reverse image search yourself, like Google Lens or TinEye, and compare what you find.','Ask the person a question only they could answer, or use Live Identity Check.','Keep what you find in a case.'])
++sect('What you can do now')+bullets(['Open the source page and review its public profile links.','Compare the photos and account details yourself.','Save useful source links in a case.'])
 +'<div style="height:6px"></div>'+prim('Add to a case','add_trace')+sec('Check picture authenticity','pic-auth')+sec('Back to chat','chat')+sec('Start over','tr-reset');
 }
 
