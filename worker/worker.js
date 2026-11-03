@@ -1436,7 +1436,9 @@ export default {
     // Only the ScamSense site may call this from a browser (CORS is NOT authentication)
     if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "This website isn't allowed to use this service." }, 403, origin);
 
-    if (path === "/photo-search") return handlePhotoSearch(request, env, origin);\n    if (path === "/photo-index") return handlePhotoIndex(request, env, origin);\n    if (path === "/verify/create") return handleVerifyCreate(request, env, origin);
+    if (path === "/photo-search") return handlePhotoSearch(request, env, origin);
+    if (path === "/photo-index") return handlePhotoIndex(request, env, origin);
+    if (path === "/verify/create") return handleVerifyCreate(request, env, origin);
     if (path === "/verify/consent") return handleVerifyConsent(request, env, origin);
     if (path === "/verify/complete") return handleVerifyComplete(request, env, origin);
     if (path === "/verify/skip") return handleVerifySkip(request, env, origin);
