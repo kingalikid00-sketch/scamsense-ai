@@ -41,8 +41,10 @@
 // Optional plain variable:                        env.GEMINI_MODEL  (defaults to DEFAULT_MODEL)
 // Optional rate-limit binding (see guide):        env.INVESTIGATE_LIMITER  (also used for image analysis and Picture Chat)
 //
-// NOT implemented here: payments, credits, OAuth, private case storage, live platform lookups,
-// reverse-image search, face matching, push notifications. The D1 binding (env.DB) is not used by this file.
+// Not implemented here: payments, credits, OAuth, private case storage, live platform lookups,
+// face matching, or push notifications. D1 (env.DB) stores Live Identity Check requests and the
+// ScamSense-owned public photo index. Photo Search compares perceptual hashes only against indexed sources;
+// it is not a web-wide reverse-image search and does not identify people.
 
 const ALLOWED_ORIGIN = "https://kingalikid00-sketch.github.io";
 const DEFAULT_MODEL = "gemini-3.8-flash";
