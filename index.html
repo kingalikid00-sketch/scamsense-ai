@@ -2874,42 +2874,31 @@ return title('Live Identity Check','Result')
 +'<div style="height:6px"></div>'+prim('Add to a case','add_ver')+sec('Back to chat','chat');
 };
 
-/* ----- Feature 2: Image Trace ----- */
+/* ----- Feature 2: ScamSense Photo Search ----- */
 Views.trace=function(){
 var T=S.trace;
-if(T.stage==='shared')return vm()+title('Review your search options','Open a visual search service to look for public pages containing these pictures.')
-+card('<div class="rt">What the search can find</div><div class="rs">It can show webpages, public social pages, and copies or visually similar versions of the pictures that the search service has indexed. Open a result to inspect its page and any public profile links.</div>')
-+card('<div class="rt">What ScamSense does</div><div class="rs">The search service supplies image and webpage results. Review the pictures, page names, public profile details and source links. You decide which results are relevant.</div>')
-+prim('Open Google Lens','tr-open-lens')+sec('Open Bing Visual Search','tr-open-bing')
-+sec('Choose different pictures','tr-reset')+sec('Back to chat','chat');
+if(T.stage==='searching')return vm()+title('Searching ScamSense','Comparing your pictures with our indexed public image sources.')+card('<div class="rs">Your pictures are being compared with the ScamSense image index. This can take a few seconds.</div>');
+if(T.stage==='results')return traceResults();
 var tiles=T.imgs.map(function(o,i){return '<div class="th"><img src="'+o.url+'" alt="Selected picture"><button class="ib" data-act="tr-rm" data-arg="'+i+'" aria-label="Remove picture">'+I('x','aria-hidden="true"')+'</button></div>'}).join('');
 var add=T.imgs.length<4?'<button class="th add" data-act="tr-add" aria-label="Add a picture">'+I('upload','aria-hidden="true" style="font-size:24px"')+'<span>Add picture</span></button>':'';
-return vm()+title('Online Photo Search','Look for these pictures and similar image copies on public webpages.')
-+'<div style="margin:0 0 12px">Add up to four example pictures. Search results may include websites or public social pages where those images appear. You can open the results and review the links yourself.</div>'
-+'<div class="thr">'+tiles+add+'</div>'
-+prim('Continue','tr-start',undefined,!T.imgs.length)
-+'<div class="rs" style="margin-top:10px">This searches for the pictures themselves and visually similar images—not a person’s identity or every other photo showing the same face. Results depend on what the search service has indexed.</div>';
+return vm()+title('ScamSense Photo Search','Search our own index of public image sources.')
++'<div style="margin:0 0 12px">Add up to four pictures. ScamSense will compare them with images that have been added to its public image index.</div>'
++'<div class="thr">'+tiles+add+'</div>'+prim('Search ScamSense','tr-start',undefined,!T.imgs.length)
++'<div class="rs" style="margin-top:10px">Results cover indexed sources only. This does not search the entire internet or identify a person across different photos.</div>';
 };
 function traceResults(){
-var T=S.trace,R=T.res;
-var cards=R.matches.map(function(m,k){
-return '<div class="card"><div style="display:flex;gap:12px;align-items:center;margin:0 0 10px"><div class="th" style="width:56px;height:56px;border-style:dashed;color:#6B7BAA;flex:none" aria-hidden="true">'+I('photo','style="font-size:24px"')+'</div><div style="min-width:0"><div class="rt">Possible match '+(k+1)+'<span class="tag">PLACEHOLDER</span></div><div class="rs">For your picture '+(m.img+1)+'</div></div></div>'
-+kv('Source',esc(m.src))+kv('Source type',esc(m.type))+kv('Date',esc(m.date))+kv('Public profile or source',esc(m.profile))+kv('Visual similarity',esc(m.sim))
-+'<div class="h" style="margin-top:10px">Why this would matter</div><div style="color:#C9D6F5;font-size:15px">'+esc(m.why)+'</div></div>';
+var R=S.trace.res||{},items=R.results||[];
+var cards=items.map(function(m){
+return '<div class="card"><a href="'+esc(m.pageUrl)+'" target="_blank" rel="noopener noreferrer" style="display:flex;gap:12px;text-decoration:none;color:inherit;align-items:flex-start">'
++'<img src="'+esc(m.imageUrl)+'" alt="Indexed public image result" loading="lazy" referrerpolicy="no-referrer" style="width:92px;height:92px;object-fit:cover;border-radius:12px;background:#17264A;flex:none">'
++'<div style="min-width:0;flex:1"><div class="rt">'+esc(m.title||'Public image source')+'</div><div class="rs">'+esc(m.source||'Source webpage')+'</div><div class="rs">Picture '+esc(String(m.picture))+' · '+esc(String(m.similarity))+'% visual-hash similarity</div><div style="font-size:13px;color:#8FA0C8;word-break:break-all;margin-top:5px">'+esc(m.pageUrl)+'</div></div></a></div>';
 }).join('');
-var none=[];for(var i=0;i<R.count;i++){if(!R.matches.some(function(m){return m.img===i}))none.push(i+1)}
-return title('Photo search results','Example layout')
-+demoBox('Demo results. No image search was run. Nothing below is a real match or a real source.')
-+'<div style="height:12px"></div>'
-
-+(R.alias?card('<div class="rs">Name or alias you entered</div><div style="font-weight:600">'+esc(R.alias)+'</div><div class="rs">This is your input. ScamSense hasn’t checked it against anything.</div>'):'')
-+sect('Review the results')+'<div style="color:#B4C3E8;margin:0 0 10px">Compare the photos, page names and public profile details. Open the source links to see where each picture appears. You decide which results are relevant.</div>'
-+sect('Possible image matches (placeholders)')+(cards||'<div class="rs">No sample matches.</div>')
-+(none.length?'<div class="rs" style="margin:0 0 12px">No sample matches in this demo for picture'+(none.length>1?'s ':' ')+none.join(', ')+'.</div>':'')
-+sect('What you can do now')+bullets(['Open the source page and review its public profile links.','Compare the photos and account details yourself.','Save useful source links in a case.'])
-+'<div style="height:6px"></div>'+prim('Add to a case','add_trace')+sec('Check picture authenticity','pic-auth')+sec('Back to chat','chat')+sec('Start over','tr-reset');
+var empty=R.indexedImages===0?'<div class="card"><div class="rt">The ScamSense image index is empty</div><div class="rs">No public images have been indexed yet, so there are no real matches to show. Public image sources must be added before this search can return results.</div></div>':'<div class="card"><div class="rt">No close matches found</div><div class="rs">We checked '+esc(String(R.indexedImages))+' indexed images. No close visual-hash matches were found. This does not mean the picture appears nowhere else online.</div></div>';
+return vm()+title('ScamSense Photo Search','Results from our own indexed image sources.')
++card('<div class="rs">'+esc(R.message||'Search complete.')+'</div><div class="rt" style="margin-top:6px">'+esc(String(items.length))+' possible matches · '+esc(String(R.indexedImages||0))+' images indexed</div>')
++(items.length?sect('Possible matches')+cards:empty)
++sec('Search different pictures','tr-reset')+sec('Back to chat','chat');
 }
-
 /* ----- Feature 3: Image Authenticity ----- */
 Views.auth=function(){
 var A=S.auth;
@@ -3112,16 +3101,23 @@ add_ver:function(){var r=S.vf.res;if(!r)return;attach([mkItem('analysis','demo',
 'p-pic':function(){S.trace={imgs:[],stage:'setup',res:null,from:'person'};S.f['tr.alias']='';go('trace')},
 'tr-add':function(){if(S.trace.imgs.length<4)pickFiles('trace',true)},
 'tr-rm':function(i){S.trace.imgs.splice(+i,1);render()},
-'tr-start':function(){
-var T=S.trace;if(!T.imgs.length)return;
-T.stage='shared';render();
-var files=T.imgs.map(function(o){return o.file}).filter(Boolean);
-try{if(files.length&&navigator.share&&navigator.canShare&&navigator.canShare({files:files})){
-navigator.share({files:files,title:'Search these pictures online',text:'Look for public webpages containing these pictures or similar image copies.'}).catch(function(){});
-}}catch(e){}
+'tr-start':async function(){
+var T=S.trace;if(!T.imgs.length||T.stage==='searching')return;
+T.stage='searching';T.res=null;render();
+try{
+var hashes=[];
+for(var i=0;i<T.imgs.length;i++){
+var bits=await dHash(T.imgs[i].url);
+if(!bits||bits.length!==64)throw new Error('One picture could not be processed. Please choose another image.');
+var hex='';for(var j=0;j<64;j+=4)hex+=parseInt(bits.slice(j,j+4),2).toString(16);
+hashes.push(hex);
+}
+var response=await fetch('https://scamsense-ai.kingalikid00.workers.dev/photo-search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hashes:hashes})});
+var data=await response.json();
+if(!response.ok)throw new Error(data.error||'Photo Search is temporarily unavailable.');
+T.res=data;T.stage='results';render();
+}catch(e){T.stage='setup';S.vmsg=e&&e.message?e.message:'Photo Search could not run. Please try again.';render()}
 },
- 'tr-open-lens':function(){window.open('https://lens.google.com/','_blank','noopener');},
- 'tr-open-bing':function(){window.open('https://www.bing.com/visualsearch','_blank','noopener');},
 'tr-reset':function(){S.trace={imgs:[],stage:'setup',res:null,from:S.trace.from};S.f['tr.alias']='';go('trace')},
 add_trace:function(){
 var T=S.trace;if(!T.res)return;
