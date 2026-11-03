@@ -2877,9 +2877,9 @@ return title('Live Identity Check','Result')
 /* ----- Feature 2: Image Trace ----- */
 Views.trace=function(){
 var T=S.trace;
-if(T.stage==='shared')return vm()+title('Search your pictures online','Choose a visual search service to look for public pages containing these pictures.')
+if(T.stage==='shared')return vm()+title('Review your search options','Open a visual search service to look for public pages containing these pictures.')
 +card('<div class="rt">What the search can find</div><div class="rs">It can show webpages, public social pages, and copies or visually similar versions of the pictures that the search service has indexed. Open a result to inspect its page and any public profile links.</div>')
-+card('<div class="rt">What ScamSense does</div><div class="rs">ScamSense gives you the search options. The external service supplies the results; you review the pages and decide what is relevant. It does not compare a person’s face across different photos or identify someone from their face.</div>')
++card('<div class="rt">What ScamSense does</div><div class="rs">The search service supplies image and webpage results. Review the pictures, page names, public profile details and source links. You decide which results are relevant.</div>')
 +prim('Open Google Lens','tr-open-lens')+sec('Open Bing Visual Search','tr-open-bing')
 +sec('Choose different pictures','tr-reset')+sec('Back to chat','chat');
 var tiles=T.imgs.map(function(o,i){return '<div class="th"><img src="'+o.url+'" alt="Selected picture"><button class="ib" data-act="tr-rm" data-arg="'+i+'" aria-label="Remove picture">'+I('x','aria-hidden="true"')+'</button></div>'}).join('');
