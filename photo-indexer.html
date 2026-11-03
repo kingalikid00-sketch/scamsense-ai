@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ScamSense Photo Index Manager</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#071126;color:#eef3ff;font:16px system-ui,-apple-system,sans-serif;padding:20px;max-width:680px;margin:auto}h1{font-size:25px}p,.muted{color:#aebcda;line-height:1.5}.box{background:#111f3d;border:1px solid #2a3d66;border-radius:15px;padding:16px;margin:14px 0}label{display:block;font-weight:650;margin:13px 0 6px}input{width:100%;padding:13px;border:1px solid #40547e;border-radius:10px;background:#08142c;color:#fff;font:inherit}button{width:100%;padding:15px;border:0;border-radius:11px;background:#49d6bd;color:#06231f;font-weight:750;font-size:16px;margin-top:16px}button:disabled{opacity:.5}#preview{max-width:150px;max-height:150px;display:block;margin-top:10px;border-radius:10px}#status{white-space:pre-wrap;margin-top:12px}
+</style>
+</head>
+<body>
+<h1>ScamSense Photo Index Manager</h1>
+<p>This private tool adds a public image and its source webpage to the ScamSense search index. Only add images and pages that are publicly accessible and that you have permission to index.</p>
+<div class="box">
+<label for="secret">Index access key</label><input id="secret" type="password" autocomplete="off" placeholder="Cloudflare PHOTO_INDEX_KEY">
+<label for="file">Choose the image file</label><input id="file" type="file" accept="image/jpeg,image/png,image/webp">
+<img id="preview" alt="Selected image preview" hidden>
+<label for="imageUrl">Public image URL</label><input id="imageUrl" type="url" placeholder="https://example.com/photo.jpg">
+<label for="pageUrl">Public webpage where the image appears</label><input id="pageUrl" type="url" placeholder="https://example.com/profile-or-page">
+<label for="title">Page or image title</label><input id="title" maxlength="240" placeholder="Public page title">
+<label for="source">Website name</label><input id="source" maxlength="120" placeholder="Example website">
+<button id="add">Add to ScamSense index</button>
+<div id="status" class="muted" role="status"></div>
+</div>
+<p class="muted">The image itself is processed in this browser. ScamSense stores its perceptual hash and the public image/page links, not the uploaded file.</p>
+<script>
+(function(){
+var $=function(id){return document.getElementById(id)}, file=null;
+$('file').addEventListener('change',function(){
+file=this.files&&this.files[0]||null;
+if(!file){$('preview').hidden=true;return}
+if(!/^image\/(jpeg|png|webp)$/.test(file.type)){file=null;$('status').textContent='Choose a JPEG, PNG or WebP image.';return}
+var u=URL.createObjectURL(file);$('preview').src=u;$('preview').hidden=false;
+});
+function hash(f){return new Promise(function(resolve,reject){
+var img=new Image(),url=URL.createObjectURL(f);
+img.onload=function(){try{var c=document.createElement('canvas');c.width=9;c.height=8;var x=c.getContext('2d',{willReadFrequently:true});x.drawImage(img,0,0,9,8);var d=x.getImageData(0,0,9,8).data,b='';
+for(var y=0;y<8;y++)for(var xx=0;xx<8;xx++){var a=(y*9+xx)*4,z=a+4;b+=(d[a]*.3+d[a+1]*.59+d[a+2]*.11)>(d[z]*.3+d[z+1]*.59+d[z+2]*.11)?'1':'0'}
+var h='';for(var i=0;i<64;i+=4)h+=parseInt(b.slice(i,i+4),2).toString(16);URL.revokeObjectURL(url);resolve(h);
+}catch(e){URL.revokeObjectURL(url);reject(e)}};
+img.onerror=function(){URL.revokeObjectURL(url);reject(new Error('The image could not be read.'))};img.src=url;
+})}
+$('add').addEventListener('click',async function(){
+var secret=$('secret').value.trim(),imageUrl=$('imageUrl').value.trim(),pageUrl=$('pageUrl').value.trim();
+if(!secret||!file||!imageUrl||!pageUrl){$('status').textContent='Enter the key, choose an image, and provide both public links.';return}
+this.disabled=true;$('status').textContent='Processing image and adding its public source…';
+try{
+var imageHash=await hash(file);
+var res=await fetch('https://scamsense-ai.kingalikid00.workers.dev/photo-index',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+secret},body:JSON.stringify({hash:imageHash,imageUrl:imageUrl,pageUrl:pageUrl,title:$('title').value,source:$('source').value})});
+var data=await res.json();if(!res.ok)throw new Error(data.error||'The source could not be added.');
+$('status').textContent='Added successfully. ScamSense can now search this indexed image.';$('file').value='';file=null;$('preview').hidden=true;
+}catch(e){$('status').textContent=e.message||'Something went wrong.'}
+finally{this.disabled=false}
+});
+})();
+</script>
+</body></html>
