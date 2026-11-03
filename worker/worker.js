@@ -1283,6 +1283,84 @@ async function handleVerifyComplete(request, env, origin) {
   }
 }
 
+
+/* ScamSense-owned public image index. Hashes are computed in the browser;
+   only the 64-bit perceptual hash and public source metadata reach this Worker. */
+async function ensurePhotoIndex(env) {
+  if (!env || !env.DB) throw new Error("database-unavailable");
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS photo_index (id INTEGER PRIMARY KEY AUTOINCREMENT, image_hash TEXT NOT NULL, image_url TEXT NOT NULL, page_url TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', source_name TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, UNIQUE(image_url))").run();
+}
+function validPublicHttps(value) {
+  try {
+    const u = new URL(value);
+    return u.protocol === "https:" && u.hostname.includes(".") &&
+      !/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(u.hostname) &&
+      u.href.length <= 1800;
+  } catch (_) { return false; }
+}
+function hashDistance(a, b) {
+  if (!/^[0-9a-f]{16}$/i.test(a || "") || !/^[0-9a-f]{16}$/i.test(b || "")) return 65;
+  let n = 0;
+  for (let i = 0; i < 16; i++) {
+    let x = parseInt(a[i], 16) ^ parseInt(b[i], 16);
+    while (x) { n += x & 1; x >>= 1; }
+  }
+  return n;
+}
+async function handlePhotoSearch(request, env, origin) {
+  if (!env || !env.DB) return json({ error: "ScamSense Photo Search storage is not connected yet." }, 503, origin);
+  let body;
+  try { const raw = await request.text(); if (raw.length > 5000) return json({ error: "That search request is too large." }, 413, origin); body = JSON.parse(raw); }
+  catch (_) { return badRequest(origin); }
+  const hashes = Array.isArray(body && body.hashes) ? body.hashes.slice(0, 4) : [];
+  if (!hashes.length || hashes.some(h => !/^[0-9a-f]{16}$/i.test(h || ""))) return badRequest(origin, "Please select a valid picture and try again.");
+  try {
+    await ensurePhotoIndex(env);
+    const rows = await env.DB.prepare("SELECT id, image_hash, image_url, page_url, title, source_name, created_at FROM photo_index ORDER BY id DESC LIMIT 5000").all();
+    const all = rows && rows.results ? rows.results : [];
+    const results = [];
+    for (let i = 0; i < hashes.length; i++) {
+      const ranked = all.map(row => ({ row, distance: hashDistance(hashes[i], row.image_hash) }))
+        .filter(x => x.distance <= 10).sort((a, b) => a.distance - b.distance).slice(0, 20);
+      for (const hit of ranked) results.push({
+        picture: i + 1, similarity: Math.max(0, Math.round((1 - hit.distance / 64) * 100)),
+        imageUrl: hit.row.image_url, pageUrl: hit.row.page_url,
+        title: hit.row.title || "Public image source", source: hit.row.source_name || new URL(hit.row.page_url).hostname,
+        indexedAt: hit.row.created_at
+      });
+    }
+    results.sort((a, b) => b.similarity - a.similarity);
+    return json({ ok: true, indexedImages: all.length, searchedPictures: hashes.length, results: results.slice(0, 40),
+      message: all.length ? (results.length ? "Possible matches from the ScamSense public image index." : "No close matches were found in the ScamSense public image index.") : "The ScamSense public image index is empty. No web-wide search has been performed." }, 200, origin);
+  } catch (_) {
+    console.error("Photo search database operation failed");
+    return json({ error: "ScamSense Photo Search is temporarily unavailable." }, 503, origin);
+  }
+}
+async function handlePhotoIndex(request, env, origin) {
+  if (!env || !env.DB || !env.PHOTO_INDEX_KEY) return json({ error: "Photo index administration is not configured." }, 503, origin);
+  if (request.headers.get("Authorization") !== "Bearer " + env.PHOTO_INDEX_KEY) return json({ error: "Indexing access was not accepted." }, 401, origin);
+  let body;
+  try { const raw = await request.text(); if (raw.length > 12000) return json({ error: "That index record is too large." }, 413, origin); body = JSON.parse(raw); }
+  catch (_) { return badRequest(origin); }
+  const hash = String(body && body.hash || "").toLowerCase();
+  const imageUrl = String(body && body.imageUrl || "");
+  const pageUrl = String(body && body.pageUrl || "");
+  const title = String(body && body.title || "").trim().slice(0, 240);
+  const source = String(body && body.source || "").trim().slice(0, 120);
+  if (!/^[0-9a-f]{16}$/.test(hash) || !validPublicHttps(imageUrl) || !validPublicHttps(pageUrl))
+    return badRequest(origin, "Use a valid 64-bit image hash and public HTTPS image and webpage links.");
+  try {
+    await ensurePhotoIndex(env);
+    await env.DB.prepare("INSERT INTO photo_index (image_hash,image_url,page_url,title,source_name,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT(image_url) DO UPDATE SET image_hash=excluded.image_hash,page_url=excluded.page_url,title=excluded.title,source_name=excluded.source_name,created_at=excluded.created_at")
+      .bind(hash, imageUrl, pageUrl, title, source, new Date().toISOString()).run();
+    return json({ ok: true, message: "Public image source added to the ScamSense index." }, 200, origin);
+  } catch (_) {
+    console.error("Photo index write failed");
+    return json({ error: "The image source could not be added to the index." }, 503, origin);
+  }
+}
+
 // ---------------------------------------------------------------- router
 
 export default {
@@ -1352,13 +1430,13 @@ export default {
       if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "This website is not allowed to use this service." }, 403, origin);
       return handleVerifyCheck(env, origin, url);
     }
-    if (path !== "/" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent" && path !== "/verify/complete" && path !== "/verify/skip" && path !== "/verify/location") return json({ error: "Not found." }, 404, origin);
+    if (path !== "/" && path !== "/photo-search" && path !== "/photo-index" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent" && path !== "/verify/complete" && path !== "/verify/skip" && path !== "/verify/location") return json({ error: "Not found." }, 404, origin);
     if (request.method !== "POST") return json({ error: "Please use POST." }, 405, origin);
 
     // Only the ScamSense site may call this from a browser (CORS is NOT authentication)
     if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "This website isn't allowed to use this service." }, 403, origin);
 
-    if (path === "/verify/create") return handleVerifyCreate(request, env, origin);
+    if (path === "/photo-search") return handlePhotoSearch(request, env, origin);\n    if (path === "/photo-index") return handlePhotoIndex(request, env, origin);\n    if (path === "/verify/create") return handleVerifyCreate(request, env, origin);
     if (path === "/verify/consent") return handleVerifyConsent(request, env, origin);
     if (path === "/verify/complete") return handleVerifyComplete(request, env, origin);
     if (path === "/verify/skip") return handleVerifySkip(request, env, origin);
