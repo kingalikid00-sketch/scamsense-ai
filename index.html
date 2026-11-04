@@ -2891,7 +2891,7 @@ var R=S.trace.res||{},items=R.results||[];
 var cards=items.map(function(m){
 return '<div class="card"><a href="'+esc(m.pageUrl)+'" target="_blank" rel="noopener noreferrer" style="display:flex;gap:12px;text-decoration:none;color:inherit;align-items:flex-start">'
 +'<img src="'+esc(m.imageUrl)+'" alt="Indexed public image result" loading="lazy" referrerpolicy="no-referrer" style="width:92px;height:92px;object-fit:cover;border-radius:12px;background:#17264A;flex:none">'
-+'<div style="min-width:0;flex:1"><div class="rt">'+esc(m.title||'Public image source')+'</div><div class="rs">'+esc(m.source||'Source webpage')+'</div><div class="rs">Picture '+esc(String(m.picture))+' · '+esc(String(m.similarity))+'% visual-hash similarity</div><div style="font-size:13px;color:#8FA0C8;word-break:break-all;margin-top:5px">'+esc(m.pageUrl)+'</div></div></a></div>';
++'<div style="min-width:0;flex:1"><div class="rt">'+esc(m.title||'Public image source')+'</div><div class="rs">'+esc(m.source||'Source webpage')+'</div><div class="rs">Picture '+esc(String(m.picture))+' · '+esc(String(m.hashDistance))+'/64 hash distance (lower is closer)</div><div style="font-size:13px;color:#8FA0C8;word-break:break-all;margin-top:5px">'+esc(m.pageUrl)+'</div></div></a></div>';
 }).join('');
 var empty=R.indexedImages===0?'<div class="card"><div class="rt">The ScamSense image index is empty</div><div class="rs">No public images have been indexed yet, so there are no real matches to show. Public image sources must be added before this search can return results.</div></div>':'<div class="card"><div class="rt">No close matches found</div><div class="rs">We checked '+esc(String(R.indexedImages))+' indexed images. No close visual-hash matches were found. This does not mean the picture appears nowhere else online.</div></div>';
 return vm()+title('ScamSense Photo Search','Results from our own indexed image sources.')
@@ -3122,7 +3122,7 @@ T.res=data;T.stage='results';render();
 add_trace:function(){
 var T=S.trace;if(!T.res)return;
 var items=T.imgs.map(function(o,i){return mkItem('picture','user','Picture '+(i+1)+' (for image trace)','',{imgUrl:o.url,hash:o.hash||('sz:'+o.file.size)})});
-items.push(mkItem('analysis','demo','Image trace (demo)',T.res.matches.length+' placeholder results for '+T.res.count+' picture'+(T.res.count>1?'s':'')+'. These are not real matches.'+(T.res.alias?' Alias you entered: '+T.res.alias+'.':''),{kind:'trace'}));
+var found=(T.res.results||[]).length;var summary=found+' possible match'+(found===1?'':'es')+' found in '+(T.res.indexedImages||0)+' indexed public images. These are visual-hash matches, not proof of identity or ownership.';items.push(mkItem('analysis','assistant','ScamSense Photo Search',summary,{kind:'trace',results:T.res.results||[]}));
 attach(items);
 },
 /* --- Image Authenticity --- */
