@@ -1340,7 +1340,8 @@ async function handlePhotoSearch(request, env, origin) {
   }
 }
 async function handlePhotoIndex(request, env, origin) {
-  if (!env || !env.DB || !env.PHOTO_INDEX_KEY) return json({ error: "Photo index administration is not configured." }, 503, origin);
+  if (!env || !env.DB) return json({ error: "ScamSense photo database binding DB is missing from this Worker deployment." }, 503, origin);
+  if (!env.PHOTO_INDEX_KEY) return json({ error: "The PHOTO_INDEX_KEY secret is missing from this deployed Worker. Add it under this Worker’s production Settings → Variables and Secrets, then redeploy." }, 503, origin);
   if (request.headers.get("Authorization") !== "Bearer " + env.PHOTO_INDEX_KEY) return json({ error: "Indexing access was not accepted." }, 401, origin);
   let body;
   try { const raw = await request.text(); if (raw.length > 12000) return json({ error: "That index record is too large." }, 413, origin); body = JSON.parse(raw); }
