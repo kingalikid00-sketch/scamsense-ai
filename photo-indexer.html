@@ -76,13 +76,13 @@ for(var i=0;i<pages.length;i++){
 var p=pages[i],info=p.imageinfo&&p.imageinfo[0],m=info&&info.extmetadata||{};
 var license=meta(m,'LicenseShortName'),terms=meta(m,'UsageTerms'),artist=meta(m,'Artist');
 if(!info||!info.thumburl||!info.descriptionurl){missingInfo++;skipped++;continue}
-if(!/cc0|public domain|cc\\s*by|cc-by/i.test((license+' '+terms).toLowerCase())){licenseSkipped++;skipped++;continue}
+if(!/cc0|public domain|cc\s*by|cc-by/i.test((license+' '+terms).toLowerCase())){licenseSkipped++;skipped++;continue}
 try{
 var imageHash=await hashUrl(info.thumburl),source=('Wikimedia Commons · '+license+(artist?' · '+artist:'')).slice(0,120);
 var saved=await fetch('https://scamsense-ai.kingalikid00.workers.dev/photo-index',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+secret},body:JSON.stringify({hash:imageHash,imageUrl:info.thumburl,pageUrl:info.descriptionurl,title:(p.title+' ['+license+']').slice(0,240),source:source})});
 var result=await saved.json();if(!saved.ok){indexFailed++;throw new Error(result.error||('Index write failed (HTTP '+saved.status+')'))}
 added++;var row=document.createElement('div');row.className='muted';row.style.padding='7px 0';row.textContent='✓ '+p.title+' — '+license;$('commonsItems').appendChild(row);
-}catch(e){if(!indexFailed)imageFailed++;skipped++;var row=document.createElement('div');row.className='muted';row.style.padding='7px 0';row.textContent='Skipped: '+(e.message||'image processing failed');$('commonsItems').appendChild(row)}
+}catch(e){if(/Indexing access was not accepted|index administration|database|index|HTTP 4|HTTP 5/i.test(e.message||''))indexFailed++;else imageFailed++;skipped++;var row=document.createElement('div');row.className='muted';row.style.padding='7px 0';row.textContent='Skipped: '+(e.message||'image processing failed');$('commonsItems').appendChild(row)}
 await new Promise(function(r){setTimeout(r,150)});
 }
 $('commonsStatus').textContent='Finished: '+added+' added; '+skipped+' skipped. Licence skips: '+licenseSkipped+'. Image-read failures: '+imageFailed+'. Index/API failures: '+indexFailed+'. Missing image details: '+missingInfo+'. This index does not search the whole internet.';
