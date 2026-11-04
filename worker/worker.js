@@ -1331,7 +1331,7 @@ async function handlePhotoSearch(request, env, origin) {
         indexedAt: hit.row.created_at
       });
     }
-    results.sort((a, b) => b.similarity - a.similarity);
+    results.sort((a, b) => a.hashDistance - b.hashDistance);
     return json({ ok: true, indexedImages: all.length, searchedPictures: hashes.length, results: results.slice(0, 40),
       message: all.length ? (results.length ? "Possible matches from the ScamSense public image index." : "No close matches were found in the ScamSense public image index.") : "The ScamSense public image index is empty. No web-wide search has been performed." }, 200, origin);
   } catch (_) {
