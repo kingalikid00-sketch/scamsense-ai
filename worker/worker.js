@@ -1325,7 +1325,7 @@ async function handlePhotoSearch(request, env, origin) {
       const ranked = all.map(row => ({ row, distance: hashDistance(hashes[i], row.image_hash) }))
         .filter(x => x.distance <= 10).sort((a, b) => a.distance - b.distance).slice(0, 20);
       for (const hit of ranked) results.push({
-        picture: i + 1, similarity: Math.max(0, Math.round((1 - hit.distance / 64) * 100)),
+        picture: i + 1, hashDistance: hit.distance,
         imageUrl: hit.row.image_url, pageUrl: hit.row.page_url,
         title: hit.row.title || "Public image source", source: hit.row.source_name || new URL(hit.row.page_url).hostname,
         indexedAt: hit.row.created_at
