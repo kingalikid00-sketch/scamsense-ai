@@ -1085,7 +1085,7 @@ WHEN THEY WANT HELP WITH A POSSIBLE SCAM:
 - Payments: figure out whether they are just talking about money, asking about a real transaction, or describing a suspicious request. If suspicious, say "I'd pause before paying" and list the specific warning signs (pressure, paying first, unusual payment method, secrecy, a story that keeps changing).
 - Messages: look for pressure, urgency, threats, unusual payment requests, requests for passwords or codes, impersonation, fake jobs, fake prizes, fake investments, romance manipulation, fake support, delivery or customs fees, moving the chat elsewhere, secrecy, and suspicious links. Explain the actual evidence in their text.
 - Links: you cannot open pages. The app only checks the text of the address. Say what was checked and what was not (where it leads, how old the site is). Never claim a page is safe or dangerous for sure.
-- Pictures: ScamSense Photo Search can compare an uploaded picture with public images already in ScamSense's own index. When someone wants to find where a picture appears, offer the in-app Photo Search action (trace_pic); do not send them to Google Labs, Google Lens, or another external search page. Be honest that results cover indexed sources only, not the whole internet. Never invent matches or sources. A visual match is not proof of who owns an account. Image Authenticity checks C2PA Content Credentials locally. It does not directly detect Google SynthID or every provider’s invisible watermark. Missing credentials do not prove an image is real or AI-generated. Never say "definitely real" or "definitely fake".
+- Pictures: ScamSense Online Photo Search sends an uploaded picture to Google Cloud Vision Web Detection and can return public webpages containing matching images, full or partial image matches, and visually similar images. Results are not exhaustive and do not cover private accounts or every website. Be clear that Google processes the uploaded picture. Never invent matches or sources. A visual match is not proof of who owns an account. Image Authenticity checks C2PA Content Credentials locally. It does not directly detect Google SynthID or every provider’s invisible watermark. Missing credentials do not prove an image is real or AI-generated. Never say "definitely real" or "definitely fake".
 - Verifying a person: Live Identity Check lets a person voluntarily complete a live check, so the user can see whether a real person took part. It is a demo in this prototype. Keep four things separate: live presence, face similarity, identity, and account ownership. A pass does not prove legal identity or account ownership.
 - Checking a person: ask what they want to check (verify them, their picture, their profile, or what they said) or let them tell you what happened.
 
@@ -2874,29 +2874,33 @@ return title('Live Identity Check','Result')
 +'<div style="height:6px"></div>'+prim('Add to a case','add_ver')+sec('Back to chat','chat');
 };
 
-/* ----- Feature 2: ScamSense Photo Search ----- */
+/* ----- Feature 2: ScamSense Online Photo Search ----- */
 Views.trace=function(){
 var T=S.trace;
-if(T.stage==='searching')return vm()+title('Searching ScamSense','Comparing your pictures with our indexed public image sources.')+card('<div class="rs">Your pictures are being compared with the ScamSense image index. This can take a few seconds.</div>');
+if(T.stage==='searching')return vm()+title('Searching public websites','Looking for matching and similar pictures online.')+card('<div class="rs">ScamSense is checking public web references. This can take a few seconds.</div>');
 if(T.stage==='results')return traceResults();
 var tiles=T.imgs.map(function(o,i){return '<div class="th"><img src="'+o.url+'" alt="Selected picture"><button class="ib" data-act="tr-rm" data-arg="'+i+'" aria-label="Remove picture">'+I('x','aria-hidden="true"')+'</button></div>'}).join('');
 var add=T.imgs.length<4?'<button class="th add" data-act="tr-add" aria-label="Add a picture">'+I('upload','aria-hidden="true" style="font-size:24px"')+'<span>Add picture</span></button>':'';
-return vm()+title('ScamSense Photo Search','Search our own index of public image sources.')
-+'<div style="margin:0 0 12px">Add up to four pictures. ScamSense will compare them with images that have been added to its public image index.</div>'
-+'<div class="thr">'+tiles+add+'</div>'+prim('Search ScamSense','tr-start',undefined,!T.imgs.length)
-+'<div class="rs" style="margin-top:10px">Results cover indexed sources only. This does not search the entire internet or identify a person across different photos.</div>';
+return vm()+title('ScamSense Online Photo Search','Find public webpages containing matching or similar pictures.')
++'<div style="margin:0 0 12px">Choose up to four pictures. ScamSense sends them securely to its online image-search service and shows results here.</div>'
++'<div class="thr">'+tiles+add+'</div>'+prim('Search online','tr-start',undefined,!T.imgs.length)
++'<div class="rs" style="margin-top:10px">Pictures are processed by Google Cloud Vision. It searches public web references, not every website or private account. Results may be incomplete.</div>';
 };
 function traceResults(){
-var R=S.trace.res||{},items=R.results||[];
+var R=S.trace.res||{},items=R.webResults||[],local=R.localResults||[];
 var cards=items.map(function(m){
-return '<div class="card"><a href="'+esc(m.pageUrl)+'" target="_blank" rel="noopener noreferrer" style="display:flex;gap:12px;text-decoration:none;color:inherit;align-items:flex-start">'
-+'<img src="'+esc(m.imageUrl)+'" alt="Indexed public image result" loading="lazy" referrerpolicy="no-referrer" style="width:92px;height:92px;object-fit:cover;border-radius:12px;background:#17264A;flex:none">'
-+'<div style="min-width:0;flex:1"><div class="rt">'+esc(m.title||'Public image source')+'</div><div class="rs">'+esc(m.source||'Source webpage')+'</div><div class="rs">Picture '+esc(String(m.picture))+' · '+esc(String(m.hashDistance))+'/64 hash distance (lower is closer)</div><div style="font-size:13px;color:#8FA0C8;word-break:break-all;margin-top:5px">'+esc(m.pageUrl)+'</div></div></a></div>';
+var href=m.pageUrl||m.imageUrl||'',image=m.imageUrl||'';
+return '<div class="card"><a href="'+esc(href)+'" target="_blank" rel="noopener noreferrer" style="display:flex;gap:12px;text-decoration:none;color:inherit;align-items:flex-start">'
++(image?'<img src="'+esc(image)+'" alt="Possible online image match" loading="lazy" referrerpolicy="no-referrer" style="width:92px;height:92px;object-fit:cover;border-radius:12px;background:#17264A;flex:none">':'<div style="width:92px;height:92px;border-radius:12px;background:#17264A;display:grid;place-items:center;flex:none">'+I('photo-search')+'</div>')
++'<div style="min-width:0;flex:1"><div class="rt">'+esc(m.title||'Possible image match')+'</div><div class="rs">'+esc(m.source||'Public web reference')+'</div><div class="rs">'+esc(m.matchType||'Possible match')+'</div><div style="font-size:13px;color:#8FA0C8;word-break:break-all;margin-top:5px">'+esc(href)+'</div></div></a></div>';
 }).join('');
-var empty=R.indexedImages===0?'<div class="card"><div class="rt">The ScamSense image index is empty</div><div class="rs">No public images have been indexed yet, so there are no real matches to show. Public image sources must be added before this search can return results.</div></div>':'<div class="card"><div class="rt">No close matches found</div><div class="rs">We checked '+esc(String(R.indexedImages))+' indexed images. No close visual-hash matches were found. This does not mean the picture appears nowhere else online.</div></div>';
-return vm()+title('ScamSense Photo Search','Results from our own indexed image sources.')
-+card('<div class="rs">'+esc(R.message||'Search complete.')+'</div><div class="rt" style="margin-top:6px">'+esc(String(items.length))+' possible matches · '+esc(String(R.indexedImages||0))+' images indexed</div>')
-+(items.length?sect('Possible matches')+cards:empty)
+var localCards=local.map(function(m){return '<div class="card"><a href="'+esc(m.pageUrl)+'" target="_blank" rel="noopener noreferrer" style="display:flex;gap:12px;text-decoration:none;color:inherit;align-items:flex-start"><img src="'+esc(m.imageUrl)+'" alt="ScamSense indexed image" loading="lazy" style="width:76px;height:76px;object-fit:cover;border-radius:10px"><div><div class="rt">'+esc(m.title)+'</div><div class="rs">'+esc(m.source)+'</div><div class="rs">'+esc(m.hashDistance)+'/64 visual hash distance</div></div></a></div>'}).join('');
+var empty='<div class="card"><div class="rt">No matching webpages found</div><div class="rs">The search did not return a public webpage match. That does not mean the picture appears nowhere else online.</div></div>';
+return vm()+title('ScamSense Online Photo Search','Public web references returned for your picture.')
++card('<div class="rs">'+esc(R.message||'Search complete.')+'</div><div class="rt" style="margin-top:6px">'+items.length+' possible online result'+(items.length===1?'':'s')+'</div>')
++(items.length?sect('Possible online matches')+cards:empty)
++(local.length?sect('Matches in ScamSense index')+localCards:'')
++'<div class="rs" style="margin:10px 2px">Results are suggestions, not proof of identity or ownership. Some websites may block image previews.</div>'
 +sec('Search different pictures','tr-reset')+sec('Back to chat','chat');
 }
 /* ----- Feature 3: Image Authenticity ----- */
@@ -3105,16 +3109,23 @@ add_ver:function(){var r=S.vf.res;if(!r)return;attach([mkItem('analysis','demo',
 var T=S.trace;if(!T.imgs.length||T.stage==='searching')return;
 T.stage='searching';T.res=null;render();
 try{
-var hashes=[];
+var hashes=[],images=[];
 for(var i=0;i<T.imgs.length;i++){
 var bits=await dHash(T.imgs[i].url);
 if(!bits||bits.length!==64)throw new Error('One picture could not be processed. Please choose another image.');
 var hex='';for(var j=0;j<64;j+=4)hex+=parseInt(bits.slice(j,j+4),2).toString(16);
 hashes.push(hex);
+var img=T.imgs[i].file,bitmap=await createImageBitmap(img),maxSide=1400,scale=Math.min(1,maxSide/Math.max(bitmap.width,bitmap.height));
+var canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+var ctx=canvas.getContext('2d');ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+var dataUrl=canvas.toDataURL('image/jpeg',0.78),b64=dataUrl.split(',')[1];
+if(b64.length>1350000){var smaller=0.72;canvas.width=Math.max(1,Math.round(canvas.width*0.78));canvas.height=Math.max(1,Math.round(canvas.height*0.78));var c2=document.createElement('canvas');c2.width=canvas.width;c2.height=canvas.height;c2.getContext('2d').drawImage(T.imgs[i].url?await new Promise(function(resolve,reject){var im=new Image();im.onload=function(){resolve(im)};im.onerror=reject;im.src=T.imgs[i].url}):canvas,0,0,c2.width,c2.height);dataUrl=c2.toDataURL('image/jpeg',smaller);b64=dataUrl.split(',')[1]}
+if(!b64||b64.length>1400000)throw new Error('This picture is too large to search. Please choose a smaller picture.');
+images.push(b64);
 }
-var response=await fetch('https://scamsense-ai.kingalikid00.workers.dev/photo-search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hashes:hashes})});
+var response=await fetch('https://scamsense-ai.kingalikid00.workers.dev/photo-search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:images,hashes:hashes})});
 var data=await response.json();
-if(!response.ok)throw new Error(data.error||'Photo Search is temporarily unavailable.');
+if(!response.ok)throw new Error(data.error||'Online Photo Search is temporarily unavailable.');
 T.res=data;T.stage='results';render();
 }catch(e){T.stage='setup';S.vmsg=e&&e.message?e.message:'Photo Search could not run. Please try again.';render()}
 },
@@ -3122,7 +3133,7 @@ T.res=data;T.stage='results';render();
 add_trace:function(){
 var T=S.trace;if(!T.res)return;
 var items=T.imgs.map(function(o,i){return mkItem('picture','user','Picture '+(i+1)+' (for image trace)','',{imgUrl:o.url,hash:o.hash||('sz:'+o.file.size)})});
-var found=(T.res.results||[]).length;var summary=found+' possible match'+(found===1?'':'es')+' found in '+(T.res.indexedImages||0)+' indexed public images. These are visual-hash matches, not proof of identity or ownership.';items.push(mkItem('analysis','assistant','ScamSense Photo Search',summary,{kind:'trace',results:T.res.results||[]}));
+var found=(T.res.webResults||[]).length;var summary=found+' possible online result'+(found===1?'':'s')+' returned from public web references. Results are not exhaustive and are not proof of identity or ownership.';items.push(mkItem('analysis','assistant','ScamSense Online Photo Search',summary,{kind:'trace',results:T.res.webResults||[]}));
 attach(items);
 },
 /* --- Image Authenticity --- */
