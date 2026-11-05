@@ -1377,14 +1377,18 @@ async function handlePhotoSearch(request, env, origin) {
       signal: controller.signal
     });
     if (!googleResponse.ok) {
-      await releasePhotoUsage(env, monthlyQuota.month, images.length);
+      // Only refund explicit client/quota rejections. Keep reservations after timeouts or server errors:
+      // Google may have received and processed the request even if ScamSense did not receive a response.
+      if ([400, 401, 403, 404, 429].includes(googleResponse.status)) {
+        await releasePhotoUsage(env, monthlyQuota.month, images.length);
+      }
       console.error("Photo web detection failed with HTTP", googleResponse.status);
       if (googleResponse.status === 429) return json({ error: "Online Photo Search is busy. Please try again later." }, 429, origin);
       return json({ error: "Online Photo Search could not complete this request. Please try again." }, 502, origin);
     }
     googleData = await googleResponse.json();
   } catch (e) {
-    await releasePhotoUsage(env, monthlyQuota.month, images.length);
+    // Do not refund an uncertain network outcome: Google may have processed the image already.
     return json({ error: e && e.name === "AbortError" ? "Online Photo Search took too long. Please try again." : "Online Photo Search could not be reached. Please try again." }, 504, origin);
   } finally {
     clearTimeout(timer);
