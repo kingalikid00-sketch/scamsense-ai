@@ -1311,33 +1311,133 @@ function hashDistance(a, b) {
 }
 async function handlePhotoSearch(request, env, origin) {
   if (!env || !env.DB) return json({ error: "ScamSense Photo Search storage is not connected yet." }, 503, origin);
+  if (!env.GOOGLE_VISION_API_KEY) return json({ error: "Online Photo Search is not connected yet. The service setup is still required." }, 503, origin);
   let body;
-  try { const raw = await request.text(); if (raw.length > 5000) return json({ error: "That search request is too large." }, 413, origin); body = JSON.parse(raw); }
-  catch (_) { return badRequest(origin); }
-  const hashes = Array.isArray(body && body.hashes) ? body.hashes.slice(0, 4) : [];
-  if (!hashes.length || hashes.some(h => !/^[0-9a-f]{16}$/i.test(h || ""))) return badRequest(origin, "Please select a valid picture and try again.");
   try {
-    await ensurePhotoIndex(env);
-    const rows = await env.DB.prepare("SELECT id, image_hash, image_url, page_url, title, source_name, created_at FROM photo_index ORDER BY id DESC LIMIT 5000").all();
-    const all = rows && rows.results ? rows.results : [];
-    const results = [];
-    for (let i = 0; i < hashes.length; i++) {
-      const ranked = all.map(row => ({ row, distance: hashDistance(hashes[i], row.image_hash) }))
-        .filter(x => x.distance <= 10).sort((a, b) => a.distance - b.distance).slice(0, 20);
-      for (const hit of ranked) results.push({
-        picture: i + 1, hashDistance: hit.distance,
-        imageUrl: hit.row.image_url, pageUrl: hit.row.page_url,
-        title: hit.row.title || "Public image source", source: hit.row.source_name || new URL(hit.row.page_url).hostname,
-        indexedAt: hit.row.created_at
+    const raw = await request.text();
+    if (raw.length > 5600000) return json({ error: "Please use a smaller picture. The search request is too large." }, 413, origin);
+    body = JSON.parse(raw);
+  } catch (_) { return badRequest(origin); }
+
+  const images = Array.isArray(body && body.images) ? body.images.slice(0, 4) : [];
+  if (!images.length || images.some(v => typeof v !== "string" || v.length < 200 || v.length > 1400000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(v))) {
+    return badRequest(origin, "Please choose a valid picture and try again.");
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  let googleData;
+  try {
+    const googleResponse = await fetch("https://vision.googleapis.com/v1/images:annotate?key=" + encodeURIComponent(env.GOOGLE_VISION_API_KEY), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requests: images.map(content => ({
+          image: { content },
+          features: [{ type: "WEB_DETECTION", maxResults: 10 }]
+        }))
+      }),
+      signal: controller.signal
+    });
+    if (!googleResponse.ok) {
+      console.error("Photo web detection failed with HTTP", googleResponse.status);
+      if (googleResponse.status === 429) return json({ error: "Online Photo Search is busy. Please try again later." }, 429, origin);
+      return json({ error: "Online Photo Search could not complete this request. Please try again." }, 502, origin);
+    }
+    googleData = await googleResponse.json();
+  } catch (e) {
+    return json({ error: e && e.name === "AbortError" ? "Online Photo Search took too long. Please try again." : "Online Photo Search could not be reached. Please try again." }, 504, origin);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const webResults = [];
+  const seen = new Set();
+  const addWebResult = (item) => {
+    if (!item || !item.pageUrl) return;
+    let pageUrl = String(item.pageUrl);
+    let imageUrl = String(item.imageUrl || "");
+    if (!/^https:\/\//i.test(pageUrl)) return;
+    if (imageUrl && !/^https:\/\//i.test(imageUrl)) imageUrl = "";
+    const key = pageUrl + "|" + imageUrl;
+    if (seen.has(key)) return;
+    seen.add(key);
+    let source = "";
+    try { source = new URL(pageUrl).hostname.replace(/^www\./, ""); } catch (_) {}
+    webResults.push({
+      picture: item.picture,
+      title: String(item.title || "Public webpage with a possible image match").replace(/<[^>]*>/g, "").slice(0, 240),
+      source,
+      pageUrl,
+      imageUrl,
+      matchType: item.matchType || "visually similar"
+    });
+  };
+
+  const responses = Array.isArray(googleData && googleData.responses) ? googleData.responses : [];
+  for (let i = 0; i < responses.length; i++) {
+    const web = responses[i] && responses[i].webDetection || {};
+    const pages = Array.isArray(web.pagesWithMatchingImages) ? web.pagesWithMatchingImages : [];
+    for (const page of pages) {
+      const full = Array.isArray(page.fullMatchingImages) ? page.fullMatchingImages[0] : null;
+      const partial = Array.isArray(page.partialMatchingImages) ? page.partialMatchingImages[0] : null;
+      addWebResult({
+        picture: i + 1, pageUrl: page.url,
+        imageUrl: full && full.url || partial && partial.url || "",
+        title: page.pageTitle || "Webpage containing a matching image",
+        matchType: full ? "Exact image match on webpage" : "Partial image match on webpage"
       });
     }
-    results.sort((a, b) => a.hashDistance - b.hashDistance);
-    return json({ ok: true, indexedImages: all.length, searchedPictures: hashes.length, results: results.slice(0, 40),
-      message: all.length ? (results.length ? "Possible matches from the ScamSense public image index." : "No close matches were found in the ScamSense public image index.") : "The ScamSense public image index is empty. No web-wide search has been performed." }, 200, origin);
-  } catch (_) {
-    console.error("Photo search database operation failed");
-    return json({ error: "ScamSense Photo Search is temporarily unavailable." }, 503, origin);
+    const groups = [
+      ["fullMatchingImages", "Exact image match"],
+      ["partialMatchingImages", "Partial image match"],
+      ["visuallySimilarImages", "Visually similar image"]
+    ];
+    for (const group of groups) {
+      const list = Array.isArray(web[group[0]]) ? web[group[0]] : [];
+      for (const match of list) addWebResult({
+        picture: i + 1, pageUrl: match.url, imageUrl: match.url,
+        title: group[1], matchType: group[1]
+      });
+    }
   }
+
+  let localResults = [];
+  let indexedImages = 0;
+  try {
+    await ensurePhotoIndex(env);
+    const hashes = Array.isArray(body && body.hashes) ? body.hashes.slice(0, 4) : [];
+    if (hashes.length && hashes.every(h => /^[0-9a-f]{16}$/i.test(h || ""))) {
+      const rows = await env.DB.prepare("SELECT id, image_hash, image_url, page_url, title, source_name, created_at FROM photo_index ORDER BY id DESC LIMIT 5000").all();
+      const all = rows && rows.results ? rows.results : [];
+      indexedImages = all.length;
+      for (let i = 0; i < hashes.length; i++) {
+        const ranked = all.map(row => ({ row, distance: hashDistance(hashes[i], row.image_hash) }))
+          .filter(x => x.distance <= 10).sort((a, b) => a.distance - b.distance).slice(0, 10);
+        for (const hit of ranked) localResults.push({
+          picture: i + 1, hashDistance: hit.distance,
+          imageUrl: hit.row.image_url, pageUrl: hit.row.page_url,
+          title: hit.row.title || "Public image source",
+          source: hit.row.source_name || new URL(hit.row.page_url).hostname,
+          matchType: "Match in ScamSense's own index"
+        });
+      }
+    }
+  } catch (_) {
+    console.error("Photo index comparison was unavailable");
+  }
+
+  return json({
+    ok: true,
+    provider: "Google Cloud Vision Web Detection",
+    searchedPictures: images.length,
+    webResults: webResults.slice(0, 40),
+    localResults: localResults.slice(0, 20),
+    indexedImages,
+    message: webResults.length
+      ? "Possible matching and visually similar images found on publicly accessible web references."
+      : "No matching public webpages were returned. This does not mean the picture appears nowhere online."
+  }, 200, origin);
 }
 async function handlePhotoIndex(request, env, origin) {
   if (!env || !env.DB) return json({ error: "ScamSense photo database binding DB is missing from this Worker deployment." }, 503, origin);
