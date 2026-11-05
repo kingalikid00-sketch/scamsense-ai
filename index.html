@@ -2898,6 +2898,7 @@ var localCards=local.map(function(m){return '<div class="card"><a href="'+esc(m.
 var empty='<div class="card"><div class="rt">No matching webpages found</div><div class="rs">The search did not return a public webpage match. That does not mean the picture appears nowhere else online.</div></div>';
 return vm()+title('ScamSense Online Photo Search','Public web references returned for your picture.')
 +card('<div class="rs">'+esc(R.message||'Search complete.')+'</div><div class="rt" style="margin-top:6px">'+items.length+' possible online result'+(items.length===1?'':'s')+'</div>')
++(R.monthlyQuota?card('<div class="rt">Free monthly allowance</div><div class="rs">'+R.monthlyQuota.remaining+' image checks left this month ('+R.monthlyQuota.used+' of '+R.monthlyQuota.limit+' used). Each picture uses one check.</div>'):'')
 +(items.length?sect('Possible online matches')+cards:empty)
 +(local.length?sect('Matches in ScamSense index')+localCards:'')
 +'<div class="rs" style="margin:10px 2px">Results are suggestions, not proof of identity or ownership. Some websites may block image previews.</div>'
