@@ -1292,6 +1292,30 @@ async function ensurePhotoIndex(env) {
   if (!env || !env.DB) throw new Error("database-unavailable");
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS photo_index (id INTEGER PRIMARY KEY AUTOINCREMENT, image_hash TEXT NOT NULL, image_url TEXT NOT NULL, page_url TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', source_name TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, UNIQUE(image_url))").run();
 }
+
+// ScamSense-side safety cap matching Google's first 1,000 free Web Detection units/month.
+// Each image sent with WEB_DETECTION consumes one unit, even when batched in one HTTP request.
+async function reservePhotoUsage(env, units) {
+  const month = new Date().toISOString().slice(0, 7);
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS photo_search_usage (month TEXT PRIMARY KEY, units INTEGER NOT NULL DEFAULT 0)").run();
+  const row = await env.DB.prepare(
+    "INSERT INTO photo_search_usage (month, units) VALUES (?, ?) " +
+    "ON CONFLICT(month) DO UPDATE SET units = photo_search_usage.units + excluded.units " +
+    "WHERE photo_search_usage.units + excluded.units <= 1000 RETURNING units"
+  ).bind(month, units).first();
+  if (row) {
+    const used = Number(row.units) || 0;
+    return { allowed: true, month, used, remaining: Math.max(0, 1000 - used), limit: 1000 };
+  }
+  const current = await env.DB.prepare("SELECT units FROM photo_search_usage WHERE month = ?").bind(month).first();
+  const used = current ? (Number(current.units) || 0) : 0;
+  return { allowed: false, month, used, remaining: Math.max(0, 1000 - used), limit: 1000 };
+}
+async function releasePhotoUsage(env, month, units) {
+  try {
+    await env.DB.prepare("UPDATE photo_search_usage SET units = MAX(0, units - ?) WHERE month = ?").bind(units, month).run();
+  } catch (_) { console.error("Photo Search quota reservation could not be released"); }
+}
 function validPublicHttps(value) {
   try {
     const u = new URL(value);
@@ -1324,6 +1348,19 @@ async function handlePhotoSearch(request, env, origin) {
     return badRequest(origin, "Please choose a valid picture and try again.");
   }
 
+  let monthlyQuota;
+  try {
+    monthlyQuota = await reservePhotoUsage(env, images.length);
+  } catch (_) {
+    return json({ error: "Online Photo Search could not check its monthly free allowance. Please try again later." }, 503, origin);
+  }
+  if (!monthlyQuota.allowed) {
+    return json({
+      error: "ScamSense has used its 1,000 free online picture searches for this month. The allowance resets next month.",
+      monthlyQuota: { used: monthlyQuota.used, limit: monthlyQuota.limit, remaining: 0, month: monthlyQuota.month }
+    }, 429, origin);
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25000);
   let googleData;
@@ -1340,12 +1377,14 @@ async function handlePhotoSearch(request, env, origin) {
       signal: controller.signal
     });
     if (!googleResponse.ok) {
+      await releasePhotoUsage(env, monthlyQuota.month, images.length);
       console.error("Photo web detection failed with HTTP", googleResponse.status);
       if (googleResponse.status === 429) return json({ error: "Online Photo Search is busy. Please try again later." }, 429, origin);
       return json({ error: "Online Photo Search could not complete this request. Please try again." }, 502, origin);
     }
     googleData = await googleResponse.json();
   } catch (e) {
+    await releasePhotoUsage(env, monthlyQuota.month, images.length);
     return json({ error: e && e.name === "AbortError" ? "Online Photo Search took too long. Please try again." : "Online Photo Search could not be reached. Please try again." }, 504, origin);
   } finally {
     clearTimeout(timer);
@@ -1434,6 +1473,7 @@ async function handlePhotoSearch(request, env, origin) {
     webResults: webResults.slice(0, 40),
     localResults: localResults.slice(0, 20),
     indexedImages,
+    monthlyQuota: { used: monthlyQuota.used, limit: monthlyQuota.limit, remaining: monthlyQuota.remaining, month: monthlyQuota.month },
     message: webResults.length
       ? "Possible matching and visually similar images found on publicly accessible web references."
       : "No matching public webpages were returned. This does not mean the picture appears nowhere online."
