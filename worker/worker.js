@@ -64,6 +64,11 @@ import { investigateUrl } from "./url-intel.js";
 import { MSG_SYSTEM, MSG_SCHEMA, MSG_MAX_BODY_CHARS, validateMessageRequest, buildMessagePrompt, parseMessageResult } from "./message-analyzer.js";
 
 const ALLOWED_ORIGIN = "https://kingalikid00-sketch.github.io";
+
+// Extra browser origins, used ONLY by a separate preview deployment (set via the PREVIEW_ORIGINS variable,
+// comma separated). On production this variable does not exist, so only ALLOWED_ORIGIN is accepted.
+let EXTRA_ORIGINS = [];
+function isAllowedOrigin(o) { return o === ALLOWED_ORIGIN || (o !== "" && EXTRA_ORIGINS.includes(o)); }
 const DEFAULT_MODEL = "gemini-3.8-flash";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
 
@@ -125,7 +130,7 @@ function corsHeaders(origin) {
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };
-  if (origin === ALLOWED_ORIGIN) h["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN;
+  if (isAllowedOrigin(origin)) h["Access-Control-Allow-Origin"] = origin;
   return h;
 }
 
@@ -1641,9 +1646,10 @@ export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "";
     const url = new URL(request.url);
+    EXTRA_ORIGINS = String((env && env.PREVIEW_ORIGINS) || "").split(",").map((x) => x.trim()).filter((x) => /^https:\/\/[a-z0-9.-]+$/i.test(x));
 
     if (request.method === "OPTIONS") {
-      if (origin && origin !== ALLOWED_ORIGIN) return new Response(null, { status: 403 });
+      if (origin && !isAllowedOrigin(origin)) return new Response(null, { status: 403 });
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
@@ -1669,16 +1675,16 @@ export default {
     // Serve the pinned 12.5 MB PE-Core Tiny model through this Worker.
     // The model runs locally in the browser; image data is never sent here.
     if (path === "/detector-model") {
-      if (origin && origin !== ALLOWED_ORIGIN) return new Response("Forbidden", { status: 403 });
+      if (origin && !isAllowedOrigin(origin)) return new Response("Forbidden", { status: 403 });
       if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
       const upstream = await fetch("https://huggingface.co/Deckard618/imdet/resolve/5c957f2/pe_tiny/model.onnx", {
         method: request.method, redirect: "follow", cf: { cacheTtl: 86400, cacheEverything: true }
       });
-      if (!upstream.ok) return new Response("Detector model is temporarily unavailable.", { status: upstream.status, headers: { "Access-Control-Allow-Origin": ALLOWED_ORIGIN, "Cache-Control": "no-store" } });
+      if (!upstream.ok) return new Response("Detector model is temporarily unavailable.", { status: upstream.status, headers: { "Access-Control-Allow-Origin": isAllowedOrigin(origin) ? origin : ALLOWED_ORIGIN, "Cache-Control": "no-store" } });
       const headers = new Headers();
       headers.set("Content-Type", "application/octet-stream");
       headers.set("Cache-Control", "public, max-age=86400");
-      headers.set("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+      headers.set("Access-Control-Allow-Origin", isAllowedOrigin(origin) ? origin : ALLOWED_ORIGIN);
       headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
       headers.set("Access-Control-Allow-Headers", "Content-Type");
       headers.set("Vary", "Origin");
@@ -1701,14 +1707,14 @@ export default {
 
     if (path === "/verify/check") {
       if (request.method !== "GET") return json({ error: "Please use GET." }, 405, origin);
-      if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "This website is not allowed to use this service." }, 403, origin);
+      if (origin && !isAllowedOrigin(origin)) return json({ error: "This website is not allowed to use this service." }, 403, origin);
       return handleVerifyCheck(env, origin, url);
     }
     if (path !== "/" && path !== "/photo-search" && path !== "/photo-index" && path !== "/connect/investigate" && path !== "/connect/analyze-message" && path !== "/connect/investigate-url" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent" && path !== "/verify/complete" && path !== "/verify/skip" && path !== "/verify/location") return json({ error: "Not found." }, 404, origin);
     if (request.method !== "POST") return json({ error: "Please use POST." }, 405, origin);
 
     // Only the ScamSense site may call this from a browser (CORS is NOT authentication)
-    if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "This website isn't allowed to use this service." }, 403, origin);
+    if (origin && !isAllowedOrigin(origin)) return json({ error: "This website isn't allowed to use this service." }, 403, origin);
 
     if (path === "/photo-search") return handlePhotoSearch(request, env, origin);
     if (path === "/photo-index") return handlePhotoIndex(request, env, origin);

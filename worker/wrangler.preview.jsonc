@@ -1,0 +1,11 @@
+{
+  // PREVIEW ONLY. A separate Worker for reviewing branches. Deliberately has NO database binding,
+  // so it can never read or write the production D1 database (scamsense-db).
+  "name": "scamsense-ai-preview",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-07",
+  "observability": { "enabled": true },
+  "vars": {
+    "PREVIEW_ORIGINS": "https://scamsense-ai-preview.pages.dev"
+  }
+}

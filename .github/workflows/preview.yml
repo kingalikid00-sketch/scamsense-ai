@@ -1,0 +1,45 @@
+name: Deploy PREVIEW (separate from production)
+
+# Runs only for the preview branch. Deploys a SEPARATE Worker (scamsense-ai-preview, no database) and a
+# SEPARATE Cloudflare Pages project (scamsense-ai-preview). It never touches the production Worker,
+# the production database, or the GitHub Pages site.
+on:
+  push:
+    branches:
+      - preview-phase-a
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scamsense-preview
+  cancel-in-progress: true
+
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  PREVIEW_WORKER_URL: https://scamsense-ai-preview.kingalikid00.workers.dev
+
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy preview Worker
+        working-directory: worker
+        run: npx --yes wrangler@4 deploy --config wrangler.preview.jsonc
+
+  site:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build preview site (points the app at the preview Worker)
+        run: |
+          mkdir dist
+          cp index.html dist/index.html
+          grep -c "https://scamsense-ai.kingalikid00.workers.dev/" dist/index.html
+          sed -i "s#https://scamsense-ai.kingalikid00.workers.dev/#${PREVIEW_WORKER_URL}/#g" dist/index.html
+          ! grep -q "https://scamsense-ai.kingalikid00.workers.dev" dist/index.html
+      - name: Create Pages project (ignored if it already exists)
+        run: npx --yes wrangler@4 pages project create scamsense-ai-preview --production-branch preview-phase-a || true
+      - name: Deploy preview site
+        run: npx --yes wrangler@4 pages deploy dist --project-name scamsense-ai-preview --branch preview-phase-a --commit-dirty=true
