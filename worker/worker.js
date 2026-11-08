@@ -35,6 +35,20 @@
 //   imageAnalyzed is true ONLY when the picture was really sent to Google Gemini and an answer came back.
 //   The image is never stored and never logged.
 //
+// ROUTE 5 (NEW): POST /connect/analyze-message   (Scam Message Analyzer)
+//   Header: Authorization: Bearer <Firebase ID token>
+//   { "text": "pasted conversation", "platform": "whatsapp|instagram|facebook|telegram|sms|email|other" }
+//   -> { "result": { assessment{level,headline,explanation}, findings[{category,severity,title,explanation,quote}],
+//                    reassuring[], unknowns[], nextSteps[], links[], quotesRemoved } }
+//   Quotes are verified against the pasted text in code. Links are extracted in code and never opened here.
+//
+// ROUTE 6 (NEW): POST /connect/investigate-url   (Website and Phishing Investigator)
+//   Header: Authorization: Bearer <Firebase ID token>
+//   { "url": "https://example.com/path" }
+//   -> { "report": { verdict, indicators[], checks[], redirects[], domain, reputation[], page, consulted[], limitations[] } }
+//   SSRF-protected (see safe-url.js). Optional secrets switch on reputation providers:
+//   GOOGLE_SAFE_BROWSING_KEY, VIRUSTOTAL_API_KEY, URLHAUS_AUTH_KEY. See SETUP-THREAT-INTEL.md.
+//
 // Chat speed settings: latest 8 turns, 20 s for the main model then a faster fallback model (40 s total), low thinking, output cap 2048 tokens.
 //
 // Secret (set in Cloudflare, never in this file): env.GEMINI_API_KEY
@@ -45,6 +59,9 @@
 // face matching, or push notifications. D1 (env.DB) stores Live Identity Check requests and the
 // ScamSense-owned public photo index. Photo Search compares perceptual hashes only against indexed sources;
 // it is not a web-wide reverse-image search and does not identify people.
+
+import { investigateUrl } from "./url-intel.js";
+import { MSG_SYSTEM, MSG_SCHEMA, MSG_MAX_BODY_CHARS, validateMessageRequest, buildMessagePrompt, parseMessageResult } from "./message-analyzer.js";
 
 const ALLOWED_ORIGIN = "https://kingalikid00-sketch.github.io";
 const DEFAULT_MODEL = "gemini-3.8-flash";
@@ -1508,6 +1525,116 @@ async function handlePhotoIndex(request, env, origin) {
   }
 }
 
+// ---------------------------------------------------------------- ROUTES 5 and 6: Message Analyzer + Website Investigator
+
+const TOOL_LIMIT_PER_HOUR = { message: 30, url: 20 };
+
+// Sign-in check shared by the two new tools. Returns { uid } or { response }.
+async function authenticateTool(request, env, origin) {
+  const ct = (request.headers.get("Content-Type") || "").toLowerCase();
+  if (!ct.startsWith("application/json")) return { response: json({ error: "That request wasn't valid. Please try again." }, 415, origin) };
+  const auth = request.headers.get("Authorization") || "";
+  const m = auth.match(/^Bearer\s+(\S+)$/i);
+  if (!m || m[1].length > INV_MAX_TOKEN_CHARS) return { response: json({ error: "Please sign in to use this.", code: "signin" }, 401, origin) };
+  try {
+    return { uid: (await verifyFirebaseToken(m[1])).uid };
+  } catch (e) {
+    const why = e && e.message ? String(e.message) : "unknown";
+    if (why === "jwks-http" || why === "jwks-shape" || (e && e.name === "TypeError")) {
+      console.error("Could not load Firebase signing keys");
+      return { response: json({ error: "Sign-in check is unavailable right now. Please try again in a moment." }, 503, origin) };
+    }
+    return { response: json({ error: "Please sign in again to use this.", code: "signin" }, 401, origin) };
+  }
+}
+
+// Hourly per-person cap, kept as a counter only (no content is stored). Fails open if the database is unavailable.
+async function toolWithinLimit(env, uid, kind) {
+  const perHour = TOOL_LIMIT_PER_HOUR[kind];
+  if (env.INVESTIGATE_LIMITER && typeof env.INVESTIGATE_LIMITER.limit === "function") {
+    try {
+      const r = await env.INVESTIGATE_LIMITER.limit({ key: kind + ":" + uid });
+      if (r && r.success === false) return false;
+    } catch (e) { console.error("Rate limiter error"); }
+  }
+  if (!env.DB) return true;
+  try {
+    const bucket = new Date().toISOString().slice(0, 13);
+    await env.DB.prepare("CREATE TABLE IF NOT EXISTS tool_usage (uid TEXT NOT NULL, kind TEXT NOT NULL, bucket TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (uid, kind, bucket))").run();
+    const row = await env.DB.prepare("INSERT INTO tool_usage (uid, kind, bucket, n) VALUES (?, ?, ?, 1) ON CONFLICT(uid, kind, bucket) DO UPDATE SET n = tool_usage.n + 1 WHERE tool_usage.n < ? RETURNING n")
+      .bind(uid, kind, bucket, perHour).first();
+    if (Math.random() < 0.05) {
+      const cutoff = new Date(Date.now() - 48 * 3600 * 1000).toISOString().slice(0, 13);
+      await env.DB.prepare("DELETE FROM tool_usage WHERE bucket < ?").bind(cutoff).run();
+    }
+    return !!row;
+  } catch (e) {
+    console.error("Tool usage counter unavailable");
+    return true;
+  }
+}
+
+async function handleAnalyzeMessage(request, env, origin) {
+  const a = await authenticateTool(request, env, origin);
+  if (a.response) return a.response;
+  if (!env || !env.GEMINI_API_KEY) {
+    console.error("GEMINI_API_KEY is not configured");
+    return json({ error: "The AI service isn't set up yet. Please try again later." }, 500, origin);
+  }
+  if (!(await toolWithinLimit(env, a.uid, "message"))) return json({ error: "You've analysed a lot of messages this hour. Please try again a little later.", code: "rate-limited" }, 429, origin);
+
+  let body;
+  try {
+    const raw = await request.text();
+    if (raw.length > MSG_MAX_BODY_CHARS) return json({ error: "That request was too large." }, 413, origin);
+    body = JSON.parse(raw);
+  } catch (e) {
+    return badRequest(origin);
+  }
+  const v = validateMessageRequest(body);
+  if (v.error) return json({ error: v.error }, v.status, origin);
+
+  const g = await callGemini(env, {
+    systemInstruction: { parts: [{ text: MSG_SYSTEM }] },
+    contents: [{ role: "user", parts: [{ text: buildMessagePrompt(v.input) }] }],
+    generationConfig: { temperature: 0.2, maxOutputTokens: 4096, responseMimeType: "application/json", responseSchema: MSG_SCHEMA },
+  }, origin, { label: "analyze-message", timeoutMs: INV_TIMEOUT_MS });
+  if (!g.ok) return g.response;
+
+  const blocked = g.data && g.data.promptFeedback && g.data.promptFeedback.blockReason;
+  const result = parseMessageResult(extractReply(g.data), v.input.text);
+  if (!result) {
+    console.error("Message analysis: unusable AI output", blocked ? "(blocked)" : "");
+    return json({ error: blocked ? "I can't analyse that text." : "The AI didn't return a usable answer. Please try again." }, 502, origin);
+  }
+  return json({ result }, 200, origin);
+}
+
+async function handleInvestigateUrl(request, env, origin) {
+  const a = await authenticateTool(request, env, origin);
+  if (a.response) return a.response;
+  if (!(await toolWithinLimit(env, a.uid, "url"))) return json({ error: "You've investigated a lot of websites this hour. Please try again a little later.", code: "rate-limited" }, 429, origin);
+
+  let body;
+  try {
+    const raw = await request.text();
+    if (raw.length > 6000) return json({ error: "That request was too large." }, 413, origin);
+    body = JSON.parse(raw);
+  } catch (e) {
+    return badRequest(origin);
+  }
+  if (!body || typeof body !== "object" || typeof body.url !== "string") return json({ error: "Please enter a web address." }, 400, origin);
+
+  try {
+    const out = await investigateUrl(body.url, env);
+    if (out.error) return json({ error: out.error.reason, code: out.error.code }, 422, origin);
+    return json({ report: out.report }, 200, origin);
+  } catch (e) {
+    console.error("Website investigation failed"); // the address is deliberately not logged
+    return json({ error: "The investigation could not be completed. Please try again." }, 502, origin);
+  }
+}
+
 // ---------------------------------------------------------------- router
 
 export default {
@@ -1577,7 +1704,7 @@ export default {
       if (origin && origin !== ALLOWED_ORIGIN) return json({ error: "This website is not allowed to use this service." }, 403, origin);
       return handleVerifyCheck(env, origin, url);
     }
-    if (path !== "/" && path !== "/photo-search" && path !== "/photo-index" && path !== "/connect/investigate" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent" && path !== "/verify/complete" && path !== "/verify/skip" && path !== "/verify/location") return json({ error: "Not found." }, 404, origin);
+    if (path !== "/" && path !== "/photo-search" && path !== "/photo-index" && path !== "/connect/investigate" && path !== "/connect/analyze-message" && path !== "/connect/investigate-url" && path !== "/connect/analyze-image" && path !== "/chat-image" && path !== "/verify/create" && path !== "/verify/consent" && path !== "/verify/complete" && path !== "/verify/skip" && path !== "/verify/location") return json({ error: "Not found." }, 404, origin);
     if (request.method !== "POST") return json({ error: "Please use POST." }, 405, origin);
 
     // Only the ScamSense site may call this from a browser (CORS is NOT authentication)
@@ -1591,6 +1718,8 @@ export default {
     if (path === "/verify/skip") return handleVerifySkip(request, env, origin);
     if (path === "/verify/location") return handleVerifyLocation(request, env, origin);
     if (path === "/connect/investigate") return handleInvestigate(request, env, origin);
+    if (path === "/connect/analyze-message") return handleAnalyzeMessage(request, env, origin);
+    if (path === "/connect/investigate-url") return handleInvestigateUrl(request, env, origin);
     if (path === "/connect/analyze-image") return handleAnalyzeImage(request, env, origin);
     if (path === "/chat-image") return handleChatImage(request, env, origin);
 

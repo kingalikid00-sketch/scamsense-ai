@@ -1028,6 +1028,153 @@ button:focus-visible,[role="button"]:focus-visible{outline-color:var(--ss-horizo
 #cmnav .cm-n.on svg{color:var(--ss-horizon)}
 @media(prefers-reduced-motion:reduce){.cm-pa{transition:none}}
 
+/* ===== Investigation tools (Phase A) =====
+   Message Analyzer + Website Investigator. Scoped to .ix so nothing else in the app changes.
+   One accent, hairline separators, text labels next to every colour (never colour alone). */
+.ix{
+  --ix-fg:#E8EDF7;--ix-fg2:#B9C4DA;--ix-mute:#8995AF;
+  --ix-line:rgba(148,163,190,.18);--ix-line2:rgba(148,163,190,.34);--ix-field:rgba(148,163,190,.07);
+  --ix-accent:#5B9DF5;--ix-accent-fg:#06111F;
+  --ix-high:#F0706B;--ix-warn:#E8873F;--ix-med:#E3A93F;--ix-low:#8995AF;--ix-info:#7FA8E6;--ix-ok:#4CB88F;
+  --ix-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  max-width:720px;margin:0 auto;padding:10px 0 44px;color:var(--ix-fg);font-size:15px;line-height:1.55;
+  font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased;
+}
+html[data-theme=light] .ix{
+  --ix-fg:#0F1728;--ix-fg2:#334155;--ix-mute:#5B6B85;
+  --ix-line:rgba(15,23,40,.12);--ix-line2:rgba(15,23,40,.26);--ix-field:rgba(15,23,40,.035);
+  --ix-accent:#1D5FC4;--ix-accent-fg:#fff;
+  --ix-high:#BE2F2F;--ix-warn:#B54708;--ix-med:#8A5600;--ix-low:#5B6B85;--ix-info:#2A5FAE;--ix-ok:#17745A;
+}
+.ix *{box-sizing:border-box}
+:where(.ix) :where(h1,h2,h3,p){margin:0}
+.ix-eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ix-mute);margin:0 0 10px}
+.ix-title{font-size:27px;line-height:1.15;font-weight:650;letter-spacing:-.018em;margin:0 0 10px}
+.ix-lede{color:var(--ix-fg2);max-width:60ch;margin:0 0 24px}
+.ix-label{display:block;font-size:13px;font-weight:600;color:var(--ix-fg2);margin:0 0 8px}
+.ix-p{color:var(--ix-fg2);overflow-wrap:anywhere}
+.ix-h{font-size:12px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--ix-mute);margin:34px 0 4px;padding:0}
+.ix-mono{font-family:var(--ix-mono);font-size:13px;overflow-wrap:anywhere}
+
+/* source selector: underlined text tabs, not pills */
+.ix-seg{display:flex;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--ix-line);margin:0 0 22px}
+.ix-seg::-webkit-scrollbar{display:none}
+.ix-seg{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 36px),transparent)}
+@media (min-width:640px){.ix-seg{-webkit-mask-image:none;mask-image:none}}
+.ix-seg button{flex:none;min-height:44px;padding:0 14px;margin:0 0 -1px;background:none;border:0;border-bottom:2px solid transparent;color:var(--ix-mute);font:inherit;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap;border-radius:0}
+.ix-seg button:first-child{padding-left:0}
+.ix-seg button:hover{color:var(--ix-fg)}
+.ix-seg button[aria-checked=true]{color:var(--ix-fg);border-bottom-color:var(--ix-accent);font-weight:600}
+
+/* fields */
+.ix-ta,.ix-in{width:100%;background:var(--ix-field);border:1px solid var(--ix-line2);border-radius:10px;color:var(--ix-fg);font:inherit;font-size:16px;line-height:1.5;padding:12px 14px;transition:border-color .16s,background-color .16s}
+.ix-ta{min-height:210px;resize:vertical;display:block}
+.ix-in{height:50px;padding:0 14px;font-family:var(--ix-mono);font-size:15px}
+.ix-ta::placeholder,.ix-in::placeholder{color:var(--ix-mute);opacity:1}
+.ix-ta:hover,.ix-in:hover{border-color:var(--ix-mute)}
+.ix-ta[disabled],.ix-in[disabled]{opacity:.6}
+.ix-count{display:flex;justify-content:space-between;gap:12px;margin:6px 2px 0;font-size:12.5px;color:var(--ix-mute)}
+.ix-count .over{color:var(--ix-high);font-weight:600}
+
+/* buttons */
+.ix-btn,.ix-btn2{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border-radius:10px;font:inherit;font-size:15px;font-weight:600;cursor:pointer;transition:filter .16s,transform .12s,border-color .16s,background-color .16s}
+.ix-btn{width:100%;background:var(--ix-accent);color:var(--ix-accent-fg);border:1px solid transparent;margin:18px 0 0}
+.ix-btn:hover{filter:brightness(1.07)}
+.ix-btn[disabled]{opacity:.55;cursor:default;filter:none}
+.ix-btn2{background:transparent;color:var(--ix-fg);border:1px solid var(--ix-line2)}
+.ix-btn2:hover{border-color:var(--ix-mute);background:var(--ix-field)}
+.ix-btn:active,.ix-btn2:active{transform:scale(.985)}
+.ix-btn2.sm{min-height:40px;padding:0 14px;font-size:14px;font-weight:550}
+.ix-actions{display:flex;flex-wrap:wrap;gap:10px;margin:36px 0 0;padding-top:22px;border-top:1px solid var(--ix-line)}
+.ix-actions .ix-btn,.ix-actions .ix-btn2{width:auto;margin:0;flex:1 1 180px}
+
+/* feedback */
+.ix-prog{height:2px;background:var(--ix-line);border-radius:1px;overflow:hidden;margin:16px 0 0}
+.ix-prog i{display:block;height:100%;width:36%;background:var(--ix-accent);animation:ixSlide 1.25s ease-in-out infinite}
+.ix-status{margin:10px 0 0;font-size:13.5px;color:var(--ix-fg2)}
+.ix-err{margin:16px 0 0;padding:12px 14px;border-left:3px solid var(--ix-high);background:var(--ix-field);color:var(--ix-fg);font-size:14.5px;border-radius:0 8px 8px 0}
+.ix-err .ix-btn2{margin-top:10px}
+.ix-note{display:flex;gap:10px;margin:18px 0 0;font-size:13px;line-height:1.5;color:var(--ix-mute)}
+.ix-note svg{flex:none;margin-top:2px;font-size:15px}
+.ix-fine{margin:30px 0 0;font-size:12.5px;line-height:1.55;color:var(--ix-mute)}
+@keyframes ixSlide{0%{transform:translateX(-100%)}100%{transform:translateX(380%)}}
+@keyframes ixIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.ix-in-anim{animation:ixIn .24s cubic-bezier(.2,.7,.2,1)}
+@media (prefers-reduced-motion:reduce){.ix-prog i{animation:none;width:100%;opacity:.5}.ix-in-anim{animation:none}.ix-btn,.ix-btn2{transition:none}}
+
+/* keyboard focus: the app resets outlines globally, so restore a clear one here */
+#main .ix button:focus-visible,#main .ix textarea:focus-visible,#main .ix input:focus-visible{outline:2px solid var(--ix-accent);outline-offset:2px;box-shadow:none;border-radius:8px}
+#main .ix .ix-seg button:focus-visible{outline-offset:-2px}
+
+/* verdict: a rule and a label, not a coloured card */
+.ix-verdict{--vc:var(--ix-low);border-left:3px solid var(--vc);padding:2px 0 2px 16px;margin:22px 0 0}
+.ix-verdict.v-high{--vc:var(--ix-high)}.ix-verdict.v-warn{--vc:var(--ix-warn)}.ix-verdict.v-med{--vc:var(--ix-med)}.ix-verdict.v-info{--vc:var(--ix-info)}.ix-verdict.v-low{--vc:var(--ix-low)}
+.ix-tag{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--vc);margin:0 0 6px}
+.ix-tag::before{content:"";width:7px;height:7px;background:var(--vc);border-radius:1px}
+.ix-vh{font-size:21px;line-height:1.25;font-weight:650;letter-spacing:-.012em;margin:0 0 6px}
+.ix-verdict .ix-p{max-width:62ch}
+
+/* severity distribution */
+.ix-sev{margin:22px 0 0}
+.ix-bar{display:flex;gap:2px;height:6px;border-radius:3px;overflow:hidden;background:var(--ix-line)}
+.ix-bar i{display:block;min-width:6px}
+.ix-bar .b-high{background:var(--ix-high)}.ix-bar .b-med{background:var(--ix-med)}.ix-bar .b-low{background:var(--ix-low)}
+.ix-legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin:8px 0 0;font-size:12.5px;color:var(--ix-mute)}
+.ix-legend b{font-weight:650;color:var(--ix-fg)}
+
+/* findings list (message analyzer): document-style, hairline separated */
+.ix-find{padding:18px 0;border-top:1px solid var(--ix-line)}
+.ix-find:first-of-type{border-top:0;padding-top:12px}
+.ix-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;margin:0 0 6px;font-size:12.5px}
+.ix-sevl{font-weight:650;letter-spacing:.06em;text-transform:uppercase;font-size:11px;display:inline-flex;align-items:center;gap:6px}
+.ix-sevl::before{content:"";width:7px;height:7px;border-radius:1px;background:currentColor}
+.s-high{color:var(--ix-high)}.s-med{color:var(--ix-med)}.s-low{color:var(--ix-low)}.s-info{color:var(--ix-info)}.s-ok{color:var(--ix-ok)}.s-warn{color:var(--ix-warn)}
+.ix-cat{color:var(--ix-mute)}
+.ix-ft{font-size:16.5px;line-height:1.35;font-weight:620;margin:0 0 4px;letter-spacing:-.005em}
+.ix-quote{margin:12px 0 0;padding:9px 12px;border-left:2px solid var(--ix-line2);background:var(--ix-field);font-family:var(--ix-mono);font-size:13px;line-height:1.55;color:var(--ix-fg2);overflow-wrap:anywhere;white-space:pre-wrap;border-radius:0 6px 6px 0}
+.ix-ql{display:block;font-family:inherit;font-size:10.5px;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--ix-mute);margin:0 0 3px}
+.ix-list{list-style:none;margin:6px 0 0;padding:0}
+.ix-list li{position:relative;padding:9px 0 9px 20px;border-top:1px solid var(--ix-line);color:var(--ix-fg2);overflow-wrap:anywhere}
+.ix-list li:first-child{border-top:0}
+.ix-list li::before{content:"";position:absolute;left:2px;top:1.05em;width:6px;height:6px;border-radius:1px;background:var(--ix-line2)}
+ol.ix-list{counter-reset:ixn}
+ol.ix-list li{counter-increment:ixn;padding-left:30px}
+ol.ix-list li::before{content:counter(ixn);background:none;width:auto;height:auto;left:0;top:9px;font-size:12.5px;font-weight:650;color:var(--ix-mute);font-feature-settings:"tnum" 1}
+
+/* link rows inside a message report */
+.ix-link{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;padding:14px 0;border-top:1px solid var(--ix-line)}
+.ix-link:first-of-type{border-top:0}
+.ix-link .l{min-width:0;flex:1 1 220px}
+.ix-link .ix-sub{margin:3px 0 0;font-size:13px;color:var(--ix-mute)}
+
+/* website report: header, check table, reputation table, path */
+.ix-host{font-family:var(--ix-mono);font-size:21px;line-height:1.3;font-weight:600;letter-spacing:-.01em;overflow-wrap:anywhere;margin:0 0 4px}
+.ix-sub{font-size:13px;color:var(--ix-mute);overflow-wrap:anywhere}
+.ix-table{margin:6px 0 0;border-top:1px solid var(--ix-line)}
+.ix-row{display:grid;grid-template-columns:148px 1fr;gap:4px 18px;padding:14px 0;border-bottom:1px solid var(--ix-line)}
+.ix-row .k{font-size:13.5px;font-weight:600;color:var(--ix-fg)}
+.ix-row .k .ix-sevl{display:flex;margin:4px 0 0;font-size:10.5px}
+.ix-row .v{color:var(--ix-fg2);min-width:0;overflow-wrap:anywhere}
+.ix-row .v .d{display:block;margin-top:4px;font-size:13px;color:var(--ix-mute)}
+.ix-facts{display:grid;grid-template-columns:148px 1fr;gap:8px 18px;margin:10px 0 0;font-size:14px}
+.ix-facts dt{color:var(--ix-mute)}.ix-facts dd{margin:0;color:var(--ix-fg);overflow-wrap:anywhere}
+@media (max-width:520px){.ix-row,.ix-facts{grid-template-columns:1fr}.ix-facts dd{margin:-4px 0 6px}.ix-title{font-size:25px}}
+
+/* redirect path */
+.ix-path{list-style:none;margin:12px 0 0;padding:0 0 0 22px;position:relative}
+.ix-path::before{content:"";position:absolute;left:5px;top:8px;bottom:8px;width:1px;background:var(--ix-line2)}
+.ix-path li{position:relative;padding:5px 0 5px 4px}
+.ix-path li::before{content:"";position:absolute;left:-21px;top:13px;width:9px;height:9px;border-radius:50%;border:1.5px solid var(--ix-mute);background:#0D1422}
+html[data-theme=light] .ix-path li::before{background:#fff}
+.ix-path li.end::before{background:var(--ix-accent);border-color:var(--ix-accent)}
+.ix-path .st{display:block;font-size:12px;color:var(--ix-mute);margin:0 0 2px}
+
+.ix-gl{margin:0 0 6px;font-size:13px;color:var(--ix-mute)}
+.ix-add{display:flex;flex-direction:column;gap:10px}
+@media (min-width:560px){.ix-add{flex-direction:row}.ix-add .ix-btn{width:auto;margin:0;flex:none;min-width:170px}.ix-add .ix-in{flex:1}}
+.ix-add .ix-btn{margin-top:0}
+.ix-copied{font-size:13px;color:var(--ix-fg2);align-self:center}
+
 </style>
 </head>
 <body>
@@ -5898,6 +6045,223 @@ var m=document.getElementById('main');
 if(k!=='ai'&&m&&m.scrollTop>0){try{m.scrollTo({top:0,behavior:reduce()?'auto':'smooth'})}catch(x){m.scrollTop=0}}
 },true);
 })()}catch(e){try{console.error('[Navigation]',e)}catch(x){}}
+</script>
+<script>
+/* ===== Investigation tools (Phase A): Message Analyzer + Website Investigator =====
+   Extends the existing app without touching existing views: adds two views, two menu entries,
+   and wraps act()/headerBack() the same way earlier modules in this file do. */
+(function(){
+var MAXC=8000,MINC=8;
+var PLAT=[['whatsapp','WhatsApp'],['instagram','Instagram'],['facebook','Facebook'],['telegram','Telegram'],['sms','SMS'],['email','Email'],['other','Other']];
+var CAT={manipulation:'Manipulation',emotional_pressure:'Emotional pressure',payment_request:'Payment request',investment_promise:'Investment promise',romance_scam:'Romance scam pattern',impersonation:'Impersonation',suspicious_link:'Suspicious link',personal_info_request:'Request for personal information',threat:'Threat',other:'Other'};
+var SEVL={high:'High',medium:'Medium',low:'Low',info:'Note'};
+var SEVC={high:'s-high',medium:'s-med',low:'s-low',info:'s-info'};
+var LEVELS={
+high_risk:{c:'v-high',t:'High risk'},suspicious:{c:'v-warn',t:'Suspicious'},some_concerns:{c:'v-med',t:'Some concerns'},
+no_clear_signs:{c:'v-info',t:'No clear signs'},unclear:{c:'v-low',t:'Not enough to judge'}};
+var UL={known_threat:{c:'v-high',t:'Reported as dangerous'},high_risk:{c:'v-high',t:'High risk'},suspicious:{c:'v-warn',t:'Suspicious'},caution:{c:'v-med',t:'Some warning signs'},no_issues_found:{c:'v-info',t:'No issues found in these checks'},limited:{c:'v-low',t:'Limited check'}};
+var CHK={risk:['s-high','Risk'],warn:['s-warn','Warning'],note:['s-info','Note'],ok:['s-ok','Nothing found'],unavailable:['s-low','Not checked']};
+var REPL={listed:['s-high','Listed'],minor:['s-med','Minor flag'],not_listed:['s-ok','Not listed'],unavailable:['s-low','Unavailable'],not_configured:['s-low','Not set up']};
+
+S.ix=S.ix||{msg:{platform:'whatsapp',stage:'form',res:null,err:null,text:''},url:{stage:'form',res:null,err:null,input:''}};
+NEWNAMES.ix_msg='Message analyzer';NEWNAMES.ix_url='Website investigator';
+var T=function(s){return esc(s==null?'':s)};
+function fval(k){return (S.f&&S.f[k])||''}
+
+/* ---------- shared bits ---------- */
+function head(eyebrow,title,lede){return '<p class="ix-eyebrow">'+T(eyebrow)+'</p><h1 class="ix-title">'+T(title)+'</h1><p class="ix-lede">'+T(lede)+'</p>'}
+function errBox(e,retry){
+if(!e)return '';
+var h='<div class="ix-err" role="alert">'+T(e.msg);
+if(e.code==='signin')h+='<div><button class="ix-btn2 sm" data-act="account">Go to Account</button></div>';
+else if(retry)h+='<div><button class="ix-btn2 sm" data-act="'+retry+'">Try again</button></div>';
+return h+'</div>'}
+function progress(msg){return '<div class="ix-prog" role="progressbar" aria-label="Working"><i></i></div><p class="ix-status" role="status">'+T(msg)+'</p>'}
+function verdictBlock(cls,tag,headline,expl){return '<section class="ix-verdict '+cls+' ix-in-anim" aria-label="Result"><p class="ix-tag">'+T(tag)+'</p><h2 class="ix-vh">'+T(headline)+'</h2><p class="ix-p">'+T(expl)+'</p></section>'}
+function fineAI(extra){return '<p class="ix-fine">'+T(extra)+'</p>'}
+function apiErr(e){
+var c=e&&e.code,m=e&&e.message;
+if(c==='signin'||m==='signin')return{code:'signin',msg:'Please sign in to use this tool.'};
+if(c==='rate-limited')return{code:c,msg:m||'You have reached the hourly limit. Please try again later.'};
+if(m&&m!=='failed'&&!/^Failed to fetch|NetworkError|Load failed/i.test(m))return{code:c||'x',msg:m};
+return{code:'net',msg:'We couldn’t reach the service. Check your connection and try again.'}}
+function copyText(txt,btnId){
+var done=function(ok){var b=document.getElementById(btnId);if(b){b.textContent=ok?'Copied':'Copy failed';setTimeout(function(){var x=document.getElementById(btnId);if(x)x.textContent='Copy summary'},1800)}};
+try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(function(){done(1)},function(){done(0)});return}}catch(e){}
+try{var ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();var ok=document.execCommand('copy');document.body.removeChild(ta);done(ok)}catch(e){done(0)}}
+
+/* ---------- MESSAGE ANALYZER ---------- */
+function msgForm(M,busy){
+var seg='<div class="ix-seg" role="radiogroup" aria-label="Where did you get this message?">';
+PLAT.forEach(function(p){seg+='<button type="button" role="radio" aria-checked="'+(M.platform===p[0])+'" data-act="ix-plat" data-arg="'+p[0]+'"'+(busy?' disabled':'')+'>'+p[1]+'</button>'});
+seg+='</div>';
+var txt=M.text||fval('ix.msg');
+return head('Investigate','Message analyzer','Paste a conversation or message you received. ScamSense explains which scam tactics it shows, quoting the exact words, and lists what it cannot tell from text alone.')
++'<label class="ix-label" id="ix-pl">Where did it come from?</label>'+seg
++'<label class="ix-label" for="ix-msg-text">Message or conversation</label>'
++'<textarea id="ix-msg-text" class="ix-ta" data-bind="ix.msg" maxlength="'+(MAXC+2000)+'" placeholder="Paste the messages here. Include the whole conversation if you can: the order of events matters." '+(busy?'disabled':'')+'>'+T(txt)+'</textarea>'
++'<div class="ix-count"><span id="ix-msg-hint">Remove anything you don’t want analysed.</span><span id="ix-msg-n">'+txt.length.toLocaleString('en-US')+' / '+MAXC.toLocaleString('en-US')+'</span></div>'
++(busy?progress('Reading the conversation. This usually takes 10 to 20 seconds.'):errBox(M.err,'ix-msg-run')+'<button class="ix-btn" data-act="ix-msg-run">Analyze message</button>')
++'<p class="ix-note">'+I('shield-check')+'<span>Your text is sent to ScamSense’s AI service for this analysis only. Links in it are checked by address and are never opened. The text is not saved or published.</span></p>'}
+
+function sevBar(f){
+var c={high:0,medium:0,low:0};f.forEach(function(x){c[x.severity]=(c[x.severity]||0)+1});
+var n=f.length;if(!n)return '';
+var seg=function(k,cls){return c[k]?'<i class="'+cls+'" style="flex:'+c[k]+'"></i>':''};
+return '<div class="ix-sev"><div class="ix-bar" role="img" aria-label="'+c.high+' high, '+c.medium+' medium, '+c.low+' low severity findings">'+seg('high','b-high')+seg('medium','b-med')+seg('low','b-low')+'</div>'
++'<div class="ix-legend"><span><b>'+n+'</b> finding'+(n===1?'':'s')+'</span><span>'+c.high+' high</span><span>'+c.medium+' medium</span><span>'+c.low+' low</span></div></div>'}
+
+function msgResult(M){
+var r=M.res,a=r.assessment,L=LEVELS[a.level]||LEVELS.unclear;
+var h=verdictBlock(L.c,L.t,a.headline,a.explanation)+sevBar(r.findings);
+if(r.findings.length){
+h+='<h2 class="ix-h">What looks suspicious, and why</h2><div>';
+r.findings.forEach(function(f){
+h+='<article class="ix-find"><div class="ix-meta"><span class="ix-sevl '+(SEVC[f.severity]||'s-low')+'">'+T(SEVL[f.severity]||'Low')+'</span><span class="ix-cat">'+T(CAT[f.category]||'Other')+'</span></div>'
++'<h3 class="ix-ft">'+T(f.title)+'</h3><p class="ix-p">'+T(f.explanation)+'</p>'
++(f.quote?'<blockquote class="ix-quote"><span class="ix-ql">From the message</span>'+T(f.quote)+'</blockquote>':'')+'</article>'});
+h+='</div>'}
+if(r.links&&r.links.length){
+h+='<h2 class="ix-h">Links in this message</h2><div>';
+r.links.forEach(function(l,i){
+var ind=l.indicators||[];
+var top=ind.some(function(x){return x.severity==='high'})?['s-high','Warning signs']:ind.length?['s-med','Some signs']:['s-low','Nothing odd in the address'];
+h+='<div class="ix-link"><div class="l"><p class="ix-mono">'+T(l.host)+'</p><p class="ix-sub"><span class="ix-sevl '+top[0]+'">'+top[1]+'</span>'+(ind.length?' · '+T(ind.slice(0,2).map(function(x){return x.title}).join('; ')):'')+'</p></div>'
++'<button class="ix-btn2 sm" data-act="ix-url-from" data-arg="'+i+'">Investigate this link</button></div>'});
+h+='</div><p class="ix-fine" style="margin-top:6px">These are checks of the address only. The links were not opened. “Nothing odd in the address” does not mean a link is safe.</p>'}
+if(r.reassuring&&r.reassuring.length){h+='<h2 class="ix-h">What looks ordinary</h2><ul class="ix-list">';r.reassuring.forEach(function(x){h+='<li>'+T(x)+'</li>'});h+='</ul>'}
+h+='<h2 class="ix-h">What this analysis can’t tell you</h2><ul class="ix-list">';r.unknowns.forEach(function(x){h+='<li>'+T(x)+'</li>'});h+='</ul>';
+h+='<h2 class="ix-h">What to do now</h2><ol class="ix-list">';r.nextSteps.forEach(function(x){h+='<li>'+T(x)+'</li>'});h+='</ol>';
+h+='<div class="ix-actions"><button class="ix-btn" data-act="ix-msg-new">Analyze another message</button><button class="ix-btn2" id="ix-msg-copy" data-act="ix-msg-copy">Copy summary</button><button class="ix-btn2" data-act="ix-msg-edit">Edit and re-run</button></div>';
+h+=fineAI('AI-generated analysis of the text you pasted, shown quote by quote so you can check it. It describes patterns in the words, not who sent them, and it is not proof that anyone committed fraud.'+(r.quotesRemoved?' '+r.quotesRemoved+' quoted phrase'+(r.quotesRemoved===1?' was':'s were')+' removed because it could not be matched to your text.':''));
+return h}
+
+function msgSummary(r){
+var a=r.assessment,L=LEVELS[a.level]||LEVELS.unclear;
+var t='ScamSense message analysis (AI-generated, based only on the pasted text)\n'+L.t+': '+a.headline+'\n'+a.explanation+'\n';
+if(r.findings.length){t+='\nFindings:\n';r.findings.forEach(function(f){t+='- ['+(SEVL[f.severity]||'')+'] '+f.title+': '+f.explanation+(f.quote?' Quote: "'+f.quote+'"':'')+'\n'})}
+t+='\nWhat to do now:\n';r.nextSteps.forEach(function(x,i){t+=(i+1)+'. '+x+'\n'});return t}
+
+Views.ix_msg=function(){var M=S.ix.msg;
+var body=M.stage==='done'&&M.res?msgResult(M):msgForm(M,M.stage==='run');
+return '<div class="ix">'+body+'</div>'};
+
+/* ---------- WEBSITE INVESTIGATOR ---------- */
+function urlForm(U,busy){
+var v=U.input||fval('ix.url');
+return head('Investigate','Website investigator','Enter a web address you were sent or found. ScamSense visits it once, safely and without signing in, then checks the address, redirects, registration, page content and security databases.')
++'<label class="ix-label" for="ix-url-in">Web address</label>'
++'<div class="ix-add"><input id="ix-url-in" class="ix-in" type="text" inputmode="url" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" data-bind="ix.url" maxlength="2048" placeholder="example.com/login" value="'+T(v)+'" '+(busy?'disabled':'')+'>'
++(busy?'':'<button class="ix-btn" data-act="ix-url-run">Investigate</button>')+'</div>'
++(busy?progress('Investigating. This usually takes 5 to 15 seconds.'):errBox(U.err,'ix-url-run'))
++'<p class="ix-note">'+I('shield-check')+'<span>ScamSense never lets this tool reach private or internal networks, sends no cookies or personal data to the site, and does not store the address you enter. HTTPS alone is never treated as a sign that a site is safe.</span></p>'}
+
+function chk(c){var s=CHK[c.status]||CHK.unavailable;
+return '<div class="ix-row"><div class="k">'+T(c.title)+'<span class="ix-sevl '+s[0]+'">'+s[1]+'</span></div><div class="v">'+T(c.summary)+(c.detail?'<span class="d">'+T(c.detail)+'</span>':'')+'</div></div>'}
+
+function urlResult(U){
+var r=U.res,v=r.verdict,L=UL[v.level]||UL.limited;
+var h='<p class="ix-eyebrow">Investigation report</p><h1 class="ix-host">'+T(r.host)+'</h1><p class="ix-sub">'+T(r.normalizedUrl)+'</p>'
++(r.submittedUrl&&r.finalUrl&&r.finalUrl!==r.normalizedUrl?'<p class="ix-sub">Ended at: '+T(r.finalUrl)+'</p>':'')
++verdictBlock(L.c,'Verdict',v.label,v.explanation);
+h+='<h2 class="ix-h">Checks</h2><div class="ix-table">';r.checks.forEach(function(c){h+=chk(c)});h+='</div>';
+var inds=(r.indicators||[]).filter(function(i){return i.severity!=='info'});
+var infos=(r.indicators||[]).filter(function(i){return i.severity==='info'});
+h+='<h2 class="ix-h">Warning signs found</h2>';
+if(!inds.length)h+='<p class="ix-p" style="margin-top:8px">No warning signs were found by the checks that ran. See the limits below.</p>';
+else{h+='<div>';inds.forEach(function(i){h+='<article class="ix-find"><div class="ix-meta"><span class="ix-sevl '+(SEVC[i.severity]||'s-low')+'">'+T(SEVL[i.severity]||'Low')+'</span></div><h3 class="ix-ft">'+T(i.title)+'</h3><p class="ix-p">'+T(i.detail)+'</p>'+(i.evidence?'<blockquote class="ix-quote"><span class="ix-ql">Found</span>'+T(i.evidence)+'</blockquote>':'')+'</article>'});h+='</div>'}
+if(infos.length){h+='<h2 class="ix-h">For context</h2><ul class="ix-list">';infos.forEach(function(i){h+='<li><strong>'+T(i.title)+'.</strong> '+T(i.detail)+'</li>'});h+='</ul>'}
+if(r.redirects&&r.redirects.length){
+h+='<h2 class="ix-h">Where the link goes</h2><ol class="ix-path">';
+r.redirects.forEach(function(x){h+='<li><span class="st">Redirect · HTTP '+T(x.status)+'</span><span class="ix-mono">'+T(x.from)+'</span></li>'});
+h+='<li class="end"><span class="st">Final destination'+(r.finalStatus?' · HTTP '+T(r.finalStatus):'')+'</span><span class="ix-mono">'+T(r.finalUrl||'Could not be reached')+'</span></li></ol>'}
+var d=r.domain||{};
+h+='<h2 class="ix-h">Domain registration</h2>';
+if(d.available){h+='<dl class="ix-facts"><dt>Domain</dt><dd class="ix-mono">'+T(d.domain)+'</dd>'
++(d.registeredAt?'<dt>Registered</dt><dd>'+T(d.registeredAt.slice(0,10))+(d.ageDays!=null?' ('+T(d.ageDays)+' days ago)':'')+'</dd>':'')
++(d.expiresAt?'<dt>Expires</dt><dd>'+T(d.expiresAt.slice(0,10))+'</dd>':'')
++(d.registrar?'<dt>Registrar</dt><dd>'+T(d.registrar)+'</dd>':'')
++(d.status&&d.status.length?'<dt>Status</dt><dd>'+T(d.status.join(', '))+'</dd>':'')+'</dl><p class="ix-fine" style="margin-top:10px">Owner and contact details are deliberately not retrieved or shown.</p>'}
+else h+='<p class="ix-p" style="margin-top:8px">'+T(d.reason||'Registration details were not available.')+'</p>';
+h+='<h2 class="ix-h">Security databases</h2><div class="ix-table">';
+(r.reputation||[]).forEach(function(x){var s=REPL[x.status]||REPL.unavailable;h+='<div class="ix-row"><div class="k">'+T(x.provider)+'<span class="ix-sevl '+s[0]+'">'+s[1]+'</span></div><div class="v">'+T(x.detail)+'</div></div>'});
+h+='</div>';
+h+='<h2 class="ix-h">Limits of this report</h2><ul class="ix-list">';(r.limitations||[]).forEach(function(x){h+='<li>'+T(x)+'</li>'});h+='</ul>';
+h+='<div class="ix-actions"><button class="ix-btn" data-act="ix-url-new">Investigate another address</button><button class="ix-btn2" id="ix-url-copy" data-act="ix-url-copy">Copy summary</button></div>';
+h+=fineAI('Investigated '+new Date(r.investigatedAt).toUTCString().replace(' GMT',' UTC')+'. Automated checks combined with published threat data. The result describes what was observed at that moment and is not a legal finding about whoever runs the site. Consulted: '+((r.consulted&&r.consulted.length)?r.consulted.join(', '):'no external sources')+'.');
+return h}
+
+function urlSummary(r){
+var v=r.verdict;var t='ScamSense website investigation of '+r.host+'\n'+v.label+': '+v.explanation+'\n';
+var i=(r.indicators||[]).filter(function(x){return x.severity!=='info'});
+if(i.length){t+='\nWarning signs:\n';i.forEach(function(x){t+='- ['+(SEVL[x.severity]||'')+'] '+x.title+'\n'})}
+t+='\nInvestigated '+r.investigatedAt+'. Automated checks, not proof.\n';return t}
+
+Views.ix_url=function(){var U=S.ix.url;
+var body=U.stage==='done'&&U.res?urlResult(U):urlForm(U,U.stage==='run');
+return '<div class="ix">'+body+'</div>'};
+
+/* ---------- actions ---------- */
+function runMsg(){
+var M=S.ix.msg;M.text=fval('ix.msg')||M.text||'';var t=M.text.trim();
+if(t.length<MINC){M.err={msg:'Paste a little more of the message so there is something to analyse.'};render();return}
+if(t.length>MAXC){M.err={msg:'That is too long. Paste up to '+MAXC.toLocaleString('en-US')+' characters, or split it into parts.'};render();return}
+M.err=null;M.stage='run';render();
+var tick=M;
+Billing.api('/connect/analyze-message',{text:t,platform:M.platform}).then(function(j){
+if(S.ix.msg!==tick)return;M.res=j.result;M.stage='done';render()}).catch(function(e){
+if(S.ix.msg!==tick)return;M.stage='form';M.err=apiErr(e);render()})}
+function runUrl(){
+var U=S.ix.url;U.input=(fval('ix.url')||U.input||'').trim();
+if(!U.input){U.err={msg:'Please enter a web address.'};render();return}
+U.err=null;U.stage='run';render();
+Billing.api('/connect/investigate-url',{url:U.input}).then(function(j){
+U.res=j.report;U.stage='done';render()}).catch(function(e){
+U.stage='form';U.err=apiErr(e);render()})}
+
+var prevAct=act;
+act=function(a,arg,el){
+var M=S.ix.msg,U=S.ix.url;
+switch(a){
+case 'ix-open-msg':S.view='ix_msg';M.stage=M.stage==='run'?'form':M.stage;render();return;
+case 'ix-open-url':S.view='ix_url';U.stage=U.stage==='run'?'form':U.stage;render();return;
+case 'ix-plat':M.text=fval('ix.msg')||M.text;if(PLAT.some(function(p){return p[0]===arg}))M.platform=arg;render();var ta=document.getElementById('ix-msg-text');if(ta){ta.focus();try{ta.setSelectionRange(ta.value.length,ta.value.length)}catch(e){}}return;
+case 'ix-msg-run':runMsg();return;
+case 'ix-msg-new':M.text='';M.res=null;M.err=null;M.stage='form';S.f['ix.msg']='';render();return;
+case 'ix-msg-edit':M.res=null;M.err=null;M.stage='form';S.f['ix.msg']=M.text;render();return;
+case 'ix-msg-copy':if(M.res)copyText(msgSummary(M.res),'ix-msg-copy');return;
+case 'ix-url-run':runUrl();return;
+case 'ix-url-new':U.input='';U.res=null;U.err=null;U.stage='form';S.f['ix.url']='';render();return;
+case 'ix-url-copy':if(U.res)copyText(urlSummary(U.res),'ix-url-copy');return;
+case 'ix-url-from':
+var l=M.res&&M.res.links&&M.res.links[+arg];if(!l)return;
+U.input=l.text;S.f['ix.url']=l.text;U.res=null;U.err=null;U.stage='form';S.view='ix_url';render();runUrl();return;
+}
+return prevAct(a,arg,el)};
+
+var prevBack=headerBack;
+headerBack=function(v){
+if(v==='ix_msg'){return S.ix.msg.stage==='done'?'ix_msg':'menu'}
+if(v==='ix_url'){return S.ix.url.stage==='done'?'ix_url':'menu'}
+return prevBack(v)};
+
+/* live character counter without re-rendering (keeps focus and caret) */
+document.addEventListener('input',function(e){
+var t=e.target;if(!t||t.id!=='ix-msg-text')return;
+var n=t.value.length,el=document.getElementById('ix-msg-n');
+if(el){el.textContent=n.toLocaleString('en-US')+' / '+MAXC.toLocaleString('en-US');el.className=n>MAXC?'over':''}
+var hint=document.getElementById('ix-msg-hint');if(hint)hint.textContent=n>MAXC?'Too long: shorten it or split it into parts.':'Remove anything you don’t want analysed.'});
+
+/* ---------- entry points: Menu ---------- */
+var prevMenu=Views.menu;
+Views.menu=function(){
+var h=prevMenu.apply(this,arguments);
+var add='<p class="ix-eyebrow" style="margin:18px 2px 8px">Investigate</p>'
++row('message-2','#3B4A78','Message analyzer','Paste a conversation and see what is suspicious and why','ix-open-msg')
++row('link','#3B4A78','Website investigator','Check a link or website before you trust it','ix-open-url');
+var i=h.indexOf('<button class="row"');
+return i>-1?h.slice(0,i)+add+h.slice(i):h+add};
+})();
 </script>
 </body>
 </html>
